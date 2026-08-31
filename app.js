@@ -66,7 +66,7 @@ function loadDemo(){
 function saveDemo(){ if(state.mode==='demo') localStorage.setItem('kudos_demo_data',JSON.stringify(state.data)); }
 
 async function loadSupabase(){
-  const [teams,profiles,challenges,psfs,challengePsfs,challengeProgress,profileTotals,profileScores,teamScores] = await Promise.all([
+  const [teams,profiles,challenges,psfs,challengePsfs,challengeProgress,profileTotals,profileScores,teamScores,progressHistory] = await Promise.all([
     supabase.from('teams').select('*').order('name'),
     supabase.from('profiles').select('*').eq('active',true).order('name'),
     supabase.from('challenges').select('*').eq('active',true).order('start_date'),
@@ -75,9 +75,10 @@ async function loadSupabase(){
     supabase.from('challenge_progress').select('*'),
     supabase.from('profile_challenge_totals').select('*'),
     supabase.from('profile_scores').select('*'),
-    supabase.from('team_scores').select('*')
+    supabase.from('team_scores').select('*'),
+    supabase.from('progress_history').select('*').order('entry_date')
   ]);
-  const err=[teams,profiles,challenges,psfs,challengePsfs,challengeProgress,profileTotals,profileScores,teamScores].find(x=>x.error);
+  const err=[teams,profiles,challenges,psfs,challengePsfs,challengeProgress,profileTotals,profileScores,teamScores,progressHistory].find(x=>x.error);
   if(err?.error) throw err.error;
   const psfMap = Object.fromEntries(psfs.data.map(x=>[x.id,x.name]));
   const cPsfs = {};
@@ -89,6 +90,7 @@ async function loadSupabase(){
     profileTotals:profileTotals.data,
     profileScores:profileScores.data,
     teamScores:teamScores.data,
+    progressHistory:progressHistory.data,
     progress:[], recognition:[], innovation:[], safety:[]
   };
 }
@@ -239,13 +241,35 @@ function logView(challengeId=''){
 }
 
 function cumulativePoints(challenge,profileId=null){
-  if(state.mode!=='demo') return [];
+  if(state.mode==='supabase'){
+    const rows=(state.data.progressHistory||[])
+      .filter(x=>x.challenge_id===challenge.id && (!profileId||x.profile_id===profileId))
+      .map(x=>({date:x.entry_date,value:Number(x.daily_value||0)}))
+      .sort((a,b)=>a.date.localeCompare(b.date));
+    const daily=[];
+    rows.forEach(r=>{
+      const last=daily.at(-1);
+      if(last&&last.date===r.date) last.value+=r.value;
+      else daily.push({...r});
+    });
+    let total=0;
+    const pts=daily.map(r=>({date:r.date,value:total+=r.value}));
+    if(pts.length===1) pts.unshift({date:challenge.start_date||pts[0].date,value:0});
+    else if(pts.length && challenge.start_date && challenge.start_date<pts[0].date) pts.unshift({date:challenge.start_date,value:0});
+    return pts;
+  }
+  const teamProfiles = new Set(state.data.profiles.filter(p=>p.team_id===challenge.team_id).map(p=>p.id));
   let rows=[];
   if(challenge.source_type==='progress') rows=state.data.progress.filter(x=>x.challenge_id===challenge.id && (!profileId||x.profile_id===profileId)).map(x=>({date:x.date,value:Number(x.value)}));
-  else if(challenge.source_type==='recognition') rows=state.data.recognition.filter(x=>!profileId||x.submitter_profile_id===profileId).map(x=>({date:x.date,value:1}));
-  else if(challenge.source_type==='innovation') rows=state.data.innovation.filter(x=>!profileId||x.profile_id===profileId).map(x=>({date:x.date,value:1}));
-  else rows=state.data.safety.filter(x=>!profileId||x.profile_id===profileId).map(x=>({date:x.date,value:1}));
-  rows.sort((a,b)=>a.date.localeCompare(b.date)); let total=0; return rows.map(r=>({date:r.date,value:total+=r.value}));
+  else if(challenge.source_type==='recognition') rows=state.data.recognition.filter(x=>teamProfiles.has(x.submitter_profile_id) && (!profileId||x.submitter_profile_id===profileId)).map(x=>({date:x.date,value:1}));
+  else if(challenge.source_type==='innovation') rows=state.data.innovation.filter(x=>teamProfiles.has(x.profile_id) && (!profileId||x.profile_id===profileId)).map(x=>({date:x.date,value:1}));
+  else rows=state.data.safety.filter(x=>teamProfiles.has(x.profile_id) && (!profileId||x.profile_id===profileId)).map(x=>({date:x.date,value:1}));
+  rows.sort((a,b)=>a.date.localeCompare(b.date));
+  let total=0;
+  const pts=rows.map(r=>({date:r.date,value:total+=r.value}));
+  if(pts.length===1) pts.unshift({date:challenge.start_date||pts[0].date,value:0});
+  else if(pts.length && challenge.start_date && challenge.start_date<pts[0].date) pts.unshift({date:challenge.start_date,value:0});
+  return pts;
 }
 function svgChart(challenge,profileId=null){
   const pts=cumulativePoints(challenge,profileId); const target=Number(challenge.target||1);
@@ -253,7 +277,8 @@ function svgChart(challenge,profileId=null){
   const W=700,H=170,pad=28,max=Math.max(target,...pts.map(p=>p.value),1); const step=pts.length>1?(W-pad*2)/(pts.length-1):0;
   const coords=pts.map((p,i)=>({x:pad+i*step,y:H-pad-(p.value/max)*(H-pad*2),...p}));
   const d=coords.map((p,i)=>`${i?'L':'M'} ${p.x} ${p.y}`).join(' '); const gy=H-pad-(target/max)*(H-pad*2);
-  return `<svg class="spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none"><line class="axis" x1="${pad}" y1="${H-pad}" x2="${W-pad}" y2="${H-pad}"/><line class="goal" x1="${pad}" y1="${gy}" x2="${W-pad}" y2="${gy}"/><path class="series" d="${d}"/><text x="${pad}" y="15">Target ${fmt(target)} ${esc(challenge.unit)}</text><text x="${pad}" y="${H-7}">${esc(pts[0].date)}</text><text x="${W-pad-70}" y="${H-7}">${esc(pts.at(-1).date)}</text></svg>`;
+  const dots=coords.map(p=>`<circle cx="${p.x}" cy="${p.y}" r="4" fill="#435F46"/>`).join('');
+  return `<svg class="spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none"><line class="axis" x1="${pad}" y1="${H-pad}" x2="${W-pad}" y2="${H-pad}"/><line class="goal" x1="${pad}" y1="${gy}" x2="${W-pad}" y2="${gy}"/><path class="series" d="${d}"/>${dots}<text x="${pad}" y="15">Target ${fmt(target)} ${esc(challenge.unit)}</text><text x="${pad}" y="${H-7}">${esc(pts[0].date)}</text><text x="${W-pad-70}" y="${H-7}">${esc(pts.at(-1).date)}</text></svg>`;
 }
 
 function progressView(){
