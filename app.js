@@ -670,9 +670,24 @@ async function submitProgress(fd){
   const {error}=await supabase.from('progress_entries').insert({profile_id:record.profile_id,challenge_id:record.challenge_id,value:record.value,entry_date:record.date,note:record.note}); if(error) throw error; state.notice='Saved. Your contribution has been added to the team total.'; await refresh();
 }
 
-async function sendContributionNotification(type,fd,p){
-  const payload=new URLSearchParams();
+async function postDetectedNetlifyForm(formName, values){
+  const form=document.querySelector(`form[name="${formName}"]`);
+  if(!form) throw new Error(`Netlify form ${formName} was not found in the deployed HTML.`);
 
+  const formData=new FormData(form);
+  formData.set('form-name',formName);
+  formData.set('bot-field','');
+  Object.entries(values||{}).forEach(([key,value])=>formData.set(key,String(value??'')));
+
+  const response=await fetch('/',{
+    method:'POST',
+    headers:{'Content-Type':'application/x-www-form-urlencoded'},
+    body:new URLSearchParams(formData).toString()
+  });
+  if(!response.ok) throw new Error(`${formName} returned HTTP ${response.status}`);
+}
+
+async function sendContributionNotification(type,fd,p){
   const common={
     submitted_by:p?.name||'Unknown profile',
     submitter_profile_code:p?.profile_code||'',
@@ -682,35 +697,47 @@ async function sendContributionNotification(type,fd,p){
     site_url:window.location.href
   };
 
-  Object.entries(common).forEach(([k,v])=>payload.set(k,String(v??'')));
+  let specificForm='';
+  let specific={...common};
+  let subject='';
+  let details='';
 
-  let formName='';
   if(type==='safety'){
-    formName='kudos-safety';
-    payload.set('form-name',formName);
-    payload.set('category',String(fd.get('category')||''));
-    payload.set('description',String(fd.get('description')||''));
-    payload.set('external_reference',String(fd.get('external_reference')||''));
-  }
-  if(type==='recognition'){
-    formName='kudos-recognition';
-    payload.set('form-name',formName);
-    payload.set('nominated_person',String(fd.get('nominated_person')||''));
-    payload.set('reason',String(fd.get('reason')||''));
-  }
-  if(type==='innovation'){
-    formName='kudos-innovation';
-    payload.set('form-name',formName);
-    payload.set('title',String(fd.get('title')||''));
-    payload.set('description',String(fd.get('description')||''));
+    specificForm='kudos-safety';
+    const category=String(fd.get('category')||'');
+    const description=String(fd.get('description')||'');
+    const ref=String(fd.get('external_reference')||'');
+    specific={...specific,category,description,external_reference:ref};
+    subject=`Flight Safety — ${category||'Submission'}`;
+    details=`Category: ${category}\nDescription: ${description}${ref?`\nExternal reference: ${ref}`:''}`;
+  } else if(type==='recognition'){
+    specificForm='kudos-recognition';
+    const nominee=String(fd.get('nominated_person')||'');
+    const reason=String(fd.get('reason')||'');
+    specific={...specific,nominated_person:nominee,reason};
+    subject=`Recognition — ${nominee||'Nomination'}`;
+    details=`Nominated person: ${nominee}\nReason: ${reason}`;
+  } else if(type==='innovation'){
+    specificForm='kudos-innovation';
+    const title=String(fd.get('title')||'');
+    const description=String(fd.get('description')||'');
+    specific={...specific,title,description};
+    subject=`Innovation — ${title||'Idea'}`;
+    details=`Title: ${title}\nDescription: ${description}`;
+  } else {
+    throw new Error('Unknown contribution type.');
   }
 
-  const response=await fetch('/',{
-    method:'POST',
-    headers:{'Content-Type':'application/x-www-form-urlencoded'},
-    body:payload.toString()
+  // Keep the structured type-specific record.
+  await postDetectedNetlifyForm(specificForm,specific);
+
+  // Also maintain one clean combined feed for all contributions.
+  await postDetectedNetlifyForm('kudos-contributions',{
+    ...common,
+    report_type:type==='safety'?'Flight Safety':type==='recognition'?'Recognition':'Innovation',
+    subject,
+    details
   });
-  if(!response.ok) throw new Error(`email notification form returned ${response.status}`);
 }
 
 async function submitSpecial(type,fd){
@@ -724,10 +751,10 @@ async function submitSpecial(type,fd){
     saveDemo();
     try{
       await sendContributionNotification(type,fd,p);
-      state.notice='Saved. This contribution is worth 20 KUDOS points and the notification was submitted for email delivery.';
+      state.notice='Saved. This contribution is worth 20 KUDOS points and the contribution was submitted to the Netlify contribution feed for email delivery.';
     }catch(err){
       console.error(err);
-      state.notice='Saved in KUDOS, but the email notification could not be submitted. Please tell a KUDOS administrator.';
+      state.notice='Saved in KUDOS, but the Netlify contribution record could not be submitted. Please tell a KUDOS administrator.';
     }
     closeModal();return;
   }
@@ -763,8 +790,8 @@ async function submitSpecial(type,fd){
   }
 
   state.notice=emailSubmitted
-    ? 'Saved. This contribution is worth 20 KUDOS points and the notification was submitted for email delivery.'
-    : 'Saved in KUDOS, but the email notification could not be submitted. Please tell a KUDOS administrator.';
+    ? 'Saved. This contribution is worth 20 KUDOS points and the contribution was submitted to the Netlify contribution feed for email delivery.'
+    : 'Saved in KUDOS, but the Netlify contribution record could not be submitted. Please tell a KUDOS administrator.';
   await refresh();
 }
 

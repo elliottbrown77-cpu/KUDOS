@@ -1,12 +1,3 @@
-KUDOS FINAL SCORING BUILD
+Upload ALL files in this folder to the ROOT of the existing KUDOS GitHub repository and commit them.
 
-Upload ALL files in this folder to the ROOT of your GitHub repository and commit them.
-
-Supabase has already been updated directly. No SQL action is required.
-
-Scoring:
-- 1% of a challenge target = 10 KUDOS
-- maximum 100 KUDOS per person per challenge
-- Recognition = 20 KUDOS
-- Innovation = 20 KUDOS
-- Flight Safety = 20 KUDOS
+This build retains the final KUDOS scoring model and fixes Netlify contribution forms.

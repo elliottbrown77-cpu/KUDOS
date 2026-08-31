@@ -1,59 +1,51 @@
-# KUDOS – Clean Contribution Email Build
+# KUDOS – Netlify Forms Fix
 
-This build fixes the contribution email layout.
+This build fixes the contribution form submission path and adds a combined contribution feed.
 
-Netlify now detects THREE separate forms:
+## Netlify forms in this build
 
-- `kudos-safety`
-- `kudos-recognition`
-- `kudos-innovation`
+Netlify should detect these four static forms after deployment:
 
-Each form contains only the fields relevant to that contribution type, plus the creator identity:
+- `kudos-contributions` — combined feed containing every special contribution
+- `kudos-safety` — structured Flight Safety submissions
+- `kudos-recognition` — structured Recognition submissions
+- `kudos-innovation` — structured Innovation submissions
+
+Every Safety / Recognition / Innovation action now makes two Netlify submissions:
+
+1. the relevant structured form; and
+2. `kudos-contributions`.
+
+This is intentional. It gives administrators a single combined contributions feed while retaining clean, type-specific records.
+
+## Recommended email notification
+
+Set ONE Netlify email notification on `kudos-contributions` to:
+
+`elliott.brown283@mod.gov.uk`
+
+Do not add email notifications to the other three unless you deliberately want duplicate email messages.
+
+The combined email contains only:
+
+- contribution type
 - submitted by
-- profile code
-- profile ID
+- profile code / ID
 - team
-- submission date
+- date
+- subject
+- contribution details
 
-## Netlify email setup
+## Why this build is different
 
-Your old `kudos-contribution` form can be left in Netlify for historical submissions, but new KUDOS submissions no longer use it.
+The JavaScript now creates its POST body from the exact static HTML form that Netlify detected, including an empty honeypot field. This follows Netlify's documented AJAX form pattern more closely than the previous manually constructed payload.
 
-In Netlify, add an email notification to `elliott.brown283@mod.gov.uk` for EACH of these three forms:
+## After deployment
 
-1. `kudos-safety`
-2. `kudos-recognition`
-3. `kudos-innovation`
+1. Let Netlify finish the new deployment.
+2. Open Netlify > Forms and confirm all four form names exist.
+3. Submit one test Recognition from KUDOS.
+4. In Netlify Forms you should see the same submission appear in both `kudos-recognition` and `kudos-contributions`.
+5. Configure the email notification on `kudos-contributions`.
 
-This means:
-- a Safety email contains only Safety fields
-- a Recognition email contains only Recognition fields
-- an Innovation email contains only Innovation fields
-
-## KUDOS score fix
-
-The Autumn 2026 term start date has been corrected in the live Supabase database to 31 August 2026.
-
-The existing test data now calculates as:
-- Challenge progress: 1000 points
-- Recognition: 10 points
-- Innovation: 10 points
-- Flight Safety: 10 points
-- Total KUDOS score: 1030 points
-
-
-## Scoring rebalance
-
-This build changes KUDOS scoring so challenge measures do not swamp the behaviour contributions.
-
-New scoring:
-- Challenge KUDOS: 1% of the team target contributed = 10 KUDOS, capped at 100 KUDOS per person per challenge
-- Recognition: 20 KUDOS each
-- Innovation: 20 KUDOS each
-- Flight Safety: 20 KUDOS each
-
-Example:
-- 1,000 kg logged against a 105,000 kg challenge = 9.52 KUDOS
-- 1 Recognition = 20 KUDOS
-
-The live Supabase scoring migration has already been applied. Do not run SCORING_PATCH.sql.
+If a test submission does not appear under Verified submissions, also check the Spam submissions view before assuming it was not received.

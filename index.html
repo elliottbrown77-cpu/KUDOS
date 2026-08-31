@@ -6,16 +6,17 @@
   <meta name="theme-color" content="#0C2338" />
   <title>KUDOS | CHF Human Performance</title>
   <link rel="manifest" href="manifest.webmanifest" />
-  <link rel="stylesheet" href="styles.css?v=scoring-final-1" />
+  <link rel="stylesheet" href="styles.css?v=netlify-forms-fix-1" />
+\n  <style>\n    .netlify-static-form{position:absolute!important;left:-10000px!important;top:auto!important;width:1px!important;height:1px!important;overflow:hidden!important;clip:rect(0 0 0 0)!important;white-space:nowrap!important}\n  </style>
 </head>
 <body>
   <div id="app"></div>
 
   <!-- Netlify contribution forms: kept separate so each email contains only relevant fields. -->
 
-  <form name="kudos-safety" method="POST" data-netlify="true" data-netlify-honeypot="bot-field" hidden>
+  <form name="kudos-safety" method="POST" data-netlify="true" data-netlify-honeypot="bot-field" class="netlify-static-form" aria-hidden="true">
     <input type="hidden" name="form-name" value="kudos-safety">
-    <input name="bot-field">
+    <input type="text" name="bot-field" tabindex="-1" autocomplete="off">
     <input name="submitted_by">
     <input name="submitter_profile_code">
     <input name="submitter_profile_id">
@@ -27,9 +28,9 @@
     <input name="site_url">
   </form>
 
-  <form name="kudos-recognition" method="POST" data-netlify="true" data-netlify-honeypot="bot-field" hidden>
+  <form name="kudos-recognition" method="POST" data-netlify="true" data-netlify-honeypot="bot-field" class="netlify-static-form" aria-hidden="true">
     <input type="hidden" name="form-name" value="kudos-recognition">
-    <input name="bot-field">
+    <input type="text" name="bot-field" tabindex="-1" autocomplete="off">
     <input name="submitted_by">
     <input name="submitter_profile_code">
     <input name="submitter_profile_id">
@@ -40,9 +41,9 @@
     <input name="site_url">
   </form>
 
-  <form name="kudos-innovation" method="POST" data-netlify="true" data-netlify-honeypot="bot-field" hidden>
+  <form name="kudos-innovation" method="POST" data-netlify="true" data-netlify-honeypot="bot-field" class="netlify-static-form" aria-hidden="true">
     <input type="hidden" name="form-name" value="kudos-innovation">
-    <input name="bot-field">
+    <input type="text" name="bot-field" tabindex="-1" autocomplete="off">
     <input name="submitted_by">
     <input name="submitter_profile_code">
     <input name="submitter_profile_id">
@@ -53,16 +54,30 @@
     <input name="site_url">
   </form>
 
+  <form name="kudos-contributions" method="POST" data-netlify="true" data-netlify-honeypot="bot-field" class="netlify-static-form" aria-hidden="true">
+    <input type="hidden" name="form-name" value="kudos-contributions">
+    <input type="text" name="bot-field" tabindex="-1" autocomplete="off">
+    <input name="report_type">
+    <input name="submitted_by">
+    <input name="submitter_profile_code">
+    <input name="submitter_profile_id">
+    <input name="submitter_team">
+    <input name="submission_date">
+    <input name="subject">
+    <textarea name="details"></textarea>
+    <input name="site_url">
+  </form>
+
 <script src="config.js"></script>
   <script>
     const cfg = window.KUDOS_CONFIG || {};
     if (cfg.SUPABASE_URL && (cfg.SUPABASE_PUBLISHABLE_KEY || cfg.SUPABASE_ANON_KEY)) {
       const script = document.createElement('script');
       script.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';
-      script.onload = () => import('./app.js?v=scoring-final-1');
+      script.onload = () => import('./app.js?v=netlify-forms-fix-1');
       document.head.appendChild(script);
     } else {
-      import('./app.js?v=scoring-final-1');
+      import('./app.js?v=netlify-forms-fix-1');
     }
   </script>
 </body>
