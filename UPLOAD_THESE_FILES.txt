@@ -1,16 +1,9 @@
-KUDOS REPORTS + CACHE FIX BUILD
+KUDOS ADMIN MODERATION BUILD
 
-Upload ALL files in this folder to the ROOT of the GitHub repository.
+Upload ALL files in this folder to the ROOT of the existing GitHub repository and commit them.
 
-This version contains:
-- Reports tab
-- Top 5 individual contributors by challenge
-- Team challenge standings
-- Overall team challenge leaderboard
-- Overall team KUDOS leaderboard
-- Graph fix
-- Root-level image fix
-- New update-friendly service worker
-
-After Netlify redeploys, refresh the website once.
-The old kudos-v2 cache will be removed automatically.
+This build includes all earlier features plus:
+- Admin-only entry moderation
+- Review of recent Progress / Recognition / Innovation / Flight Safety entries
+- Remove button with confirmation
+- Immediate recalculation of scores and challenge totals

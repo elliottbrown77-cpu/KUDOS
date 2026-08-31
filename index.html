@@ -6,20 +6,41 @@
   <meta name="theme-color" content="#0C2338" />
   <title>KUDOS | CHF Human Performance</title>
   <link rel="manifest" href="manifest.webmanifest" />
-  <link rel="stylesheet" href="styles.css?v=reports-1" />
+  <link rel="stylesheet" href="styles.css?v=admin-moderation-1" />
 </head>
 <body>
   <div id="app"></div>
+
+  <!-- Netlify detects this form at deploy time. The app posts Recognition,
+       Innovation and Flight Safety submissions to it after saving to Supabase. -->
+  <form name="kudos-contribution" method="POST" data-netlify="true" data-netlify-honeypot="bot-field" hidden>
+    <input type="hidden" name="form-name" value="kudos-contribution">
+    <input name="bot-field">
+    <input name="report_type">
+    <input name="submitted_by">
+    <input name="submitter_profile_code">
+    <input name="submitter_profile_id">
+    <input name="submitter_team">
+    <input name="submission_date">
+    <input name="site_url">
+    <input name="nominated_person">
+    <textarea name="reason"></textarea>
+    <input name="innovation_title">
+    <textarea name="description"></textarea>
+    <input name="safety_category">
+    <input name="external_reference">
+  </form>
+
   <script src="config.js"></script>
   <script>
     const cfg = window.KUDOS_CONFIG || {};
     if (cfg.SUPABASE_URL && (cfg.SUPABASE_PUBLISHABLE_KEY || cfg.SUPABASE_ANON_KEY)) {
       const script = document.createElement('script');
       script.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';
-      script.onload = () => import('./app.js?v=reports-1');
+      script.onload = () => import('./app.js?v=admin-moderation-1');
       document.head.appendChild(script);
     } else {
-      import('./app.js?v=reports-1');
+      import('./app.js?v=admin-moderation-1');
     }
   </script>
 </body>

@@ -74,3 +74,39 @@ main{max-width:1120px;margin:0 auto;padding:18px 16px 40px}
   .nav-btn b{font-size:17px}
   .report-team-grid{grid-template-columns:1fr}
 }
+
+
+/* Home contribution actions */
+.contribution-title{margin-top:26px}
+.contribution-actions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+.contribution-card{display:flex;flex-direction:column;gap:11px;position:relative;overflow:hidden}
+.contribution-card h3{margin:2px 0 6px}
+.contribution-card .btn{margin-top:auto}
+.contribution-icon{width:38px;height:38px;border-radius:12px;background:#edf1ed;display:grid;place-items:center;font-weight:900;font-size:20px;color:var(--green)}
+.eyebrow{font-size:10px;letter-spacing:.13em;font-weight:900;color:var(--muted)}
+.safety-priority{border:2px solid #b42025;background:linear-gradient(180deg,#fff 0%,#fff8f7 100%);box-shadow:0 8px 26px rgba(180,32,37,.12)}
+.safety-priority .contribution-icon{background:#b42025;color:white}
+.safety-priority .eyebrow{color:#b42025}
+.safety-btn{background:#b42025;color:white;border:none}
+.safety-btn:hover{filter:brightness(.94)}
+.creator-strip{padding:10px 12px;border-radius:12px;background:#eef2ef;color:var(--navy);margin-bottom:14px;font-size:13px}
+.safety-warning{padding:12px 14px;border-radius:12px;background:#fff4e6;border:1px solid #e5c998;color:#654b20;font-size:12px;line-height:1.45}
+.safety-modal textarea{min-height:135px}
+@media(max-width:900px){
+  .contribution-actions{grid-template-columns:1fr}
+  .safety-priority{order:-1}
+}
+
+
+/* Admin entry moderation */
+.moderation-note{margin-bottom:14px;border-left:4px solid var(--red)}
+.moderation-table table{min-width:980px}
+.moderation-detail{max-width:360px;white-space:normal}
+.entry-type{display:inline-block;padding:5px 8px;border-radius:999px;font-size:10px;font-weight:900;background:#eef2ef;color:var(--navy);white-space:nowrap}
+.entry-type.safety{background:#fee9e9;color:#8c181c}
+.entry-type.recognition{background:#fff5d9;color:#755817}
+.entry-type.innovation{background:#e9f1ff;color:#214d82}
+.entry-type.progress{background:#e9f2ea;color:#31543a}
+.btn.danger{background:#b42025;color:#fff;border:none}
+.btn.danger:hover{filter:brightness(.94)}
+.btn.compact{padding:8px 10px;font-size:11px}

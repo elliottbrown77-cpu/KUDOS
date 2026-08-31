@@ -97,6 +97,25 @@ async function loadSupabase(){
 }
 
 
+async function loadAdminEntries(){
+  if(state.mode!=='supabase' || !isFullAdmin()) return {progress:[],recognition:[],innovation:[],safety:[]};
+  const [progress,recognition,innovation,safety] = await Promise.all([
+    supabase.from('progress_entries').select('*').order('created_at',{ascending:false}).limit(100),
+    supabase.from('recognition_entries').select('*').order('created_at',{ascending:false}).limit(100),
+    supabase.from('innovation_entries').select('*').order('created_at',{ascending:false}).limit(100),
+    supabase.from('safety_entries').select('*').order('created_at',{ascending:false}).limit(100)
+  ]);
+  const err=[progress,recognition,innovation,safety].find(x=>x.error);
+  if(err?.error) throw err.error;
+  return {
+    progress:progress.data||[],
+    recognition:recognition.data||[],
+    innovation:innovation.data||[],
+    safety:safety.data||[]
+  };
+}
+
+
 async function loadAdminSession(){
   if(state.mode!=='supabase' || !supabase) return;
   const {data:{session}} = await supabase.auth.getSession();
@@ -108,6 +127,7 @@ async function loadAdminSession(){
   }
 }
 function isAdmin(){ return ['rep','admin'].includes(state.appUser?.role); }
+function isFullAdmin(){ return state.appUser?.role==='admin'; }
 function adminTeamId(){
   if(state.appUser?.role==='rep') return state.appUser.team_id;
   return state.teamFilter || currentProfile()?.team_id || state.data?.teams?.[0]?.id || '';
@@ -117,6 +137,7 @@ async function refresh(){
   try{
     if(state.mode==='supabase') await loadAdminSession();
     state.data = state.mode==='demo' ? loadDemo() : await loadSupabase();
+    if(state.mode==='supabase' && isFullAdmin()) state.data.adminEntries = await loadAdminEntries();
     if(!state.profileId && state.data.profiles.length) state.profileId=state.data.profiles[0].id;
     if(!state.profileFilter) state.profileFilter=state.profileId;
     if(!state.teamFilter) state.teamFilter=currentProfile()?.team_id || state.data.teams[0]?.id || '';
@@ -209,6 +230,42 @@ function progressCard(c,profileId=state.profileId){
   <div class="actions"><button class="btn primary small" data-log="${c.id}">Add progress</button><button class="btn ghost small" data-detail="${c.id}">View progress</button></div></article>`;
 }
 
+
+function contributionQuickActions(home=false){
+  return `<div class="contribution-actions ${home?'home-contributions':''}">
+    <div class="card contribution-card safety-priority">
+      <div class="contribution-icon">!</div>
+      <div>
+        <div class="eyebrow">FLIGHT SAFETY</div>
+        <h3>Report a safety issue</h3>
+        <p class="challenge-desc">Record a safety concern or good catch with a short description. The submission is attributed to your selected KUDOS profile.</p>
+        <div class="score-badge">1 safety contribution • +10 points</div>
+      </div>
+      <button class="btn safety-btn" data-special="safety">Report safety issue</button>
+    </div>
+    <div class="card contribution-card">
+      <div class="contribution-icon">★</div>
+      <div>
+        <div class="eyebrow">RECOGNITION</div>
+        <h3>Recognise someone</h3>
+        <p class="challenge-desc">Nominate anyone by name — they do not need to have a KUDOS profile.</p>
+        <div class="score-badge">1 recognition • +10 points</div>
+      </div>
+      <button class="btn primary" data-special="recognition">Submit recognition</button>
+    </div>
+    <div class="card contribution-card">
+      <div class="contribution-icon">↗</div>
+      <div>
+        <div class="eyebrow">INNOVATION</div>
+        <h3>Submit an idea</h3>
+        <p class="challenge-desc">Suggest something that makes the team safer, simpler or more effective.</p>
+        <div class="score-badge">1 idea • +10 points</div>
+      </div>
+      <button class="btn primary" data-special="innovation">Submit innovation</button>
+    </div>
+  </div>`;
+}
+
 function homeView(){
   const p=currentProfile(), team=p?.team_id || state.teamFilter, challenges=activeTeamChallenges(team), avg=teamAverage(team), cov=psfCoverage(team);
   return `<section class="hero"><div><div class="gold" style="font-weight:900;letter-spacing:.12em">KUDOS</div><h1>CHF HUMAN<br><span class="gold">PERFORMANCE</span></h1><p>Team challenges built around the factors that shape performance. Small actions. Better performance.</p><span class="strap">READY TO LEAD • READY TO FIGHT • READY TO WIN</span></div></section>
@@ -217,6 +274,8 @@ function homeView(){
   <div class="card metric"><div class="label">Team KUDOS score</div><div class="value">${fmt(teamScore(team))}</div><div class="sub">Combined individual contribution</div></div>
   <div class="card metric"><div class="label">Challenge completion</div><div class="value">${pct(avg)}</div><div class="sub">Average capped at 100% per challenge</div></div>
   <div class="card metric"><div class="label">PSF coverage</div><div class="value">${cov.count}/9</div><div class="sub">Across the current challenge portfolio</div></div></div>
+  <div class="section-title contribution-title"><h2>Make a contribution</h2><p>Safety • Recognition • Innovation</p></div>
+  ${contributionQuickActions(true)}
   <div class="section-title"><h2>Current challenges</h2><p>${challenges.length} active</p></div><div class="grid two">${challenges.slice(0,6).map(c=>progressCard(c)).join('')||'<div class="empty">No active challenges for this team.</div>'}</div>${crests()}`;
 }
 
@@ -440,10 +499,68 @@ function reportsView(){
 }
 
 function contributeView(){
-  return `<div class="section-title"><h2>Contribute</h2><p>Useful behaviours beyond routine challenge entries</p></div><div class="grid three">
-  <div class="card"><h3>Recognise someone</h3><p class="challenge-desc">Specific recognition for a useful behaviour, contribution or act of leadership.</p><div class="score-badge">1 recognition • +10 points</div><div style="margin-top:14px"><button class="btn primary" data-special="recognition">Submit recognition</button></div></div>
-  <div class="card"><h3>Innovation</h3><p class="challenge-desc">Suggest or trial something that makes the team safer, simpler or more effective.</p><div class="score-badge">1 idea • +10 points</div><div style="margin-top:14px"><button class="btn primary" data-special="innovation">Submit idea</button></div></div>
-  <div class="card"><h3>Flight Safety</h3><p class="challenge-desc">Record the KUDOS contribution only. Sensitive flight-safety narrative stays in the authorised safety system.</p><div class="score-badge">1 contribution • +10 points</div><div style="margin-top:14px"><button class="btn primary" data-special="safety">Record contribution</button></div></div></div>`;
+  return `<div class="section-title"><h2>Contribute</h2><p>Safety, recognition and innovation</p></div>${contributionQuickActions(false)}
+  <div class="notice" style="margin-top:14px">Every submission records the selected KUDOS profile as the creator and is also sent through the site notification form for administrator email notification.</div>`;
+}
+
+
+function entryCreator(profileId){
+  const p=profileById(profileId);
+  return p ? `${p.name} • ${teamName(p.team_id)}` : 'Unknown profile';
+}
+function shortText(value,max=120){
+  const s=String(value||'').trim();
+  return s.length>max ? `${s.slice(0,max-1)}…` : s;
+}
+function adminEntryRows(){
+  const a=state.data?.adminEntries||{progress:[],recognition:[],innovation:[],safety:[]};
+  const rows=[];
+  (a.progress||[]).forEach(x=>rows.push({
+    id:x.id,type:'progress',label:'Progress',
+    creator:entryCreator(x.profile_id),
+    date:x.entry_date||x.created_at?.slice(0,10)||'',
+    headline:challengeById(x.challenge_id)?.title||'Challenge progress',
+    detail:`${fmt(x.value)} ${challengeById(x.challenge_id)?.unit||''}${x.note?` • ${shortText(x.note)}`:''}`
+  }));
+  (a.recognition||[]).forEach(x=>rows.push({
+    id:x.id,type:'recognition',label:'Recognition',
+    creator:entryCreator(x.submitter_profile_id),
+    date:x.entry_date||x.created_at?.slice(0,10)||'',
+    headline:`Nominee: ${x.nominated_person||'Not recorded'}`,
+    detail:shortText(x.reason,180)
+  }));
+  (a.innovation||[]).forEach(x=>rows.push({
+    id:x.id,type:'innovation',label:'Innovation',
+    creator:entryCreator(x.profile_id),
+    date:x.entry_date||x.created_at?.slice(0,10)||'',
+    headline:x.title||'Innovation',
+    detail:shortText(x.description,180)
+  }));
+  (a.safety||[]).forEach(x=>rows.push({
+    id:x.id,type:'safety',label:'Flight Safety',
+    creator:entryCreator(x.profile_id),
+    date:x.entry_date||x.created_at?.slice(0,10)||'',
+    headline:x.category||'Flight Safety',
+    detail:shortText(x.description,180)
+  }));
+  return rows.sort((a,b)=>String(b.date).localeCompare(String(a.date))).slice(0,200);
+}
+function adminModerationView(){
+  if(!isFullAdmin()) return '';
+  const rows=adminEntryRows();
+  return `<div class="section-title"><h2>Entry moderation</h2><p>Admin only • remove invalid or erroneous contributions</p></div>
+  <div class="notice moderation-note">Removing an entry immediately recalculates challenge progress and KUDOS scores. Any email notification already sent cannot be recalled.</div>
+  <div class="table-wrap moderation-table"><table>
+    <thead><tr><th>Type</th><th>Submitted by</th><th>Date</th><th>Entry</th><th>Detail</th><th></th></tr></thead>
+    <tbody>${rows.map(r=>`<tr>
+      <td><span class="entry-type ${r.type}">${esc(r.label)}</span></td>
+      <td>${esc(r.creator)}</td>
+      <td>${esc(r.date)}</td>
+      <td><strong>${esc(r.headline)}</strong></td>
+      <td class="moderation-detail">${esc(r.detail)}</td>
+      <td><button class="btn danger compact" data-delete-entry="${esc(r.id)}" data-entry-type="${esc(r.type)}">Remove</button></td>
+    </tr>`).join('') || '<tr><td colspan="6"><div class="empty compact-empty">No entries to moderate yet.</div></td></tr>'}
+    </tbody></table></div>`;
 }
 
 function repView(){
@@ -453,7 +570,8 @@ function repView(){
   if(state.mode==='demo' && !['rep','admin'].includes(currentProfile()?.role)) return `<div class="section-title"><h2>Performance Representative</h2></div><div class="notice">This screen is reserved for Performance Representatives and KUDOS administrators.</div>`;
   return `<div class="section-title"><h2>Performance Representative / Admin</h2><p>${esc(teamName(team))}${state.mode==='supabase'&&state.appUser?` • ${esc(state.appUser.role.toUpperCase())}`:''}</p></div>${state.mode==='supabase'?`<div class="actions" style="margin-bottom:14px"><button class="btn ghost" data-action="adminLogout">Sign out admin</button></div>`:''}<div class="grid two"><div class="card"><h3 style="margin-top:0">Portfolio health</h3><div class="kpi-list"><div class="kpi"><b>${cs.length}</b><span>Active challenges</span></div><div class="kpi"><b>${cov.count}/9</b><span>PSFs covered</span></div><div class="kpi"><b>${pct(teamAverage(team))}</b><span>Average complete</span></div><div class="kpi"><b>${fmt(teamScore(team))}</b><span>Team KUDOS</span></div></div><div class="coverage" style="margin-top:14px"><span style="width:${cov.count/9*100}%"></span></div></div><div class="card"><h3 style="margin-top:0">Term challenge portfolio</h3><p class="challenge-desc">Create 5–7 simple, measurable challenges. Across the portfolio cover all nine Performance Shaping Factors.</p><button class="btn navy" data-action="newChallenge">Create challenge</button></div></div>
   <div class="section-title"><h2>PSF coverage</h2><p>${cov.count===9?'All nine covered':'Close the remaining gaps before launch'}</p></div><div class="psf-grid">${PSFS.map(x=>`<div class="psf ${cov.covered.has(x)?'on':''}"><span>${cov.covered.has(x)?'✓':'○'}</span>${esc(x)}</div>`).join('')}</div>
-  <div class="section-title"><h2>Challenges</h2></div><div class="table-wrap"><table><thead><tr><th>Challenge</th><th>Target</th><th>Actual</th><th>Complete</th><th>PSFs</th></tr></thead><tbody>${cs.map(c=>{const s=challengeStats(c);return `<tr><td>${esc(c.title)}</td><td>${fmt(c.target)} ${esc(c.unit)}</td><td>${fmt(s.actual)}</td><td>${pct(s.completion)}</td><td>${(c.psfs||[]).map(esc).join(', ')}</td></tr>`}).join('')}</tbody></table></div>`;
+  <div class="section-title"><h2>Challenges</h2></div><div class="table-wrap"><table><thead><tr><th>Challenge</th><th>Target</th><th>Actual</th><th>Complete</th><th>PSFs</th></tr></thead><tbody>${cs.map(c=>{const s=challengeStats(c);return `<tr><td>${esc(c.title)}</td><td>${fmt(c.target)} ${esc(c.unit)}</td><td>${fmt(s.actual)}</td><td>${pct(s.completion)}</td><td>${(c.psfs||[]).map(esc).join(', ')}</td></tr>`}).join('')}</tbody></table></div>
+  ${adminModerationView()}`;
 }
 
 function profileModal(){
@@ -466,9 +584,31 @@ function newProfileModal(){
 
 function specialModal(type){
   const p=currentProfile();
-  if(type==='recognition') return `<div class="modal-backdrop" id="modal"><div class="modal"><h2>Recognise someone</h2><form id="specialForm" data-type="recognition"><div class="field"><label>Who are you recognising?</label><select name="recognised_profile_id" required><option value="">Choose person</option>${state.data.profiles.filter(x=>x.id!==p.id).map(x=>`<option value="${x.id}">${esc(x.name)} — ${esc(teamName(x.team_id))}</option>`).join('')}</select></div><div class="field"><label>What did they do?</label><textarea name="reason" required placeholder="Be specific about the useful behaviour or contribution"></textarea></div><button class="btn primary" type="submit">Submit recognition (+10 points)</button></form></div></div>`;
-  if(type==='innovation') return `<div class="modal-backdrop" id="modal"><div class="modal"><h2>Submit an innovation</h2><form id="specialForm" data-type="innovation"><div class="field"><label>Title</label><input name="title" required placeholder="Short, clear idea"></div><div class="field"><label>Description</label><textarea name="description" required placeholder="What could be better and what do you suggest?"></textarea></div><button class="btn primary" type="submit">Submit idea (+10 points)</button></form></div></div>`;
-  return `<div class="modal-backdrop" id="modal"><div class="modal"><h2>Record Flight Safety contribution</h2><form id="specialForm" data-type="safety"><div class="notice">Do not enter sensitive occurrence narrative here. KUDOS records only that an eligible safety contribution was made.</div><div class="field" style="margin-top:14px"><label>Category</label><input name="category" required placeholder="e.g. Flight Safety report / good catch"></div><div class="field"><label>External reference <span class="help">optional</span></label><input name="external_reference" placeholder="Reference from authorised system"></div><button class="btn primary" type="submit">Record contribution (+10 points)</button></form></div></div>`;
+  const creator=`${esc(p?.name||'No profile selected')} • ${esc(teamName(p?.team_id))}`;
+  if(type==='recognition') return `<div class="modal-backdrop" id="modal"><div class="modal"><h2>Recognise someone</h2>
+    <div class="creator-strip"><strong>Submitted by:</strong> ${creator}</div>
+    <form id="specialForm" data-type="recognition">
+      <div class="field"><label>Who are you nominating?</label><input name="nominated_person" required maxlength="160" placeholder="Enter their name"></div>
+      <div class="help" style="margin-top:-8px;margin-bottom:12px">They do not need to be registered in KUDOS.</div>
+      <div class="field"><label>Why are you recognising them?</label><textarea name="reason" required maxlength="3000" placeholder="Describe what they did and why it deserves recognition"></textarea></div>
+      <button class="btn primary" type="submit">Submit recognition (+10 points)</button>
+    </form></div></div>`;
+  if(type==='innovation') return `<div class="modal-backdrop" id="modal"><div class="modal"><h2>Submit an innovation</h2>
+    <div class="creator-strip"><strong>Submitted by:</strong> ${creator}</div>
+    <form id="specialForm" data-type="innovation">
+      <div class="field"><label>Title</label><input name="title" required maxlength="180" placeholder="Short, clear idea"></div>
+      <div class="field"><label>Description</label><textarea name="description" required maxlength="4000" placeholder="What could be better and what do you suggest?"></textarea></div>
+      <button class="btn primary" type="submit">Submit idea (+10 points)</button>
+    </form></div></div>`;
+  return `<div class="modal-backdrop" id="modal"><div class="modal safety-modal"><h2>Report a Flight Safety issue</h2>
+    <div class="creator-strip"><strong>Submitted by:</strong> ${creator}</div>
+    <div class="safety-warning">Give enough detail for the issue to be understood, but do not enter classified, protectively marked or otherwise security-sensitive information. Use the authorised Flight Safety reporting system where formal occurrence reporting is required.</div>
+    <form id="specialForm" data-type="safety">
+      <div class="field" style="margin-top:14px"><label>Category</label><input name="category" required maxlength="160" placeholder="e.g. Hazard / good catch / equipment / process"></div>
+      <div class="field"><label>Description of the issue</label><textarea name="description" required maxlength="4000" placeholder="Briefly describe what you observed, why it matters and any immediate action taken"></textarea></div>
+      <div class="field"><label>External reference <span class="help">optional</span></label><input name="external_reference" maxlength="200" placeholder="Reference from an authorised reporting system, if available"></div>
+      <button class="btn safety-btn" type="submit">Submit Flight Safety report (+10 points)</button>
+    </form></div></div>`;
 }
 
 function adminLoginModal(){
@@ -523,26 +663,111 @@ async function submitProgress(fd){
   if(state.mode==='demo'){state.data.progress.push(record);saveDemo();state.notice='Saved. Your contribution has been added to the team total.';state.view='progress';state.challengeFilter=record.challenge_id;render();return;}
   const {error}=await supabase.from('progress_entries').insert({profile_id:record.profile_id,challenge_id:record.challenge_id,value:record.value,entry_date:record.date,note:record.note}); if(error) throw error; state.notice='Saved. Your contribution has been added to the team total.'; await refresh();
 }
+
+async function sendContributionNotification(type,fd,p){
+  const payload=new URLSearchParams();
+  payload.set('form-name','kudos-contribution');
+  payload.set('report_type', type==='safety'?'Flight Safety':type==='recognition'?'Recognition':'Innovation');
+  payload.set('submitted_by', p?.name||'Unknown profile');
+  payload.set('submitter_profile_code', p?.profile_code||'');
+  payload.set('submitter_profile_id', p?.id||'');
+  payload.set('submitter_team', teamName(p?.team_id));
+  payload.set('submission_date', today());
+  payload.set('site_url', window.location.href);
+  payload.set('nominated_person', String(fd.get('nominated_person')||''));
+  payload.set('reason', String(fd.get('reason')||''));
+  payload.set('innovation_title', String(fd.get('title')||''));
+  payload.set('description', String(fd.get('description')||''));
+  payload.set('safety_category', String(fd.get('category')||''));
+  payload.set('external_reference', String(fd.get('external_reference')||''));
+  const response=await fetch('/',{
+    method:'POST',
+    headers:{'Content-Type':'application/x-www-form-urlencoded'},
+    body:payload.toString()
+  });
+  if(!response.ok) throw new Error(`email notification form returned ${response.status}`);
+}
+
 async function submitSpecial(type,fd){
   const p=currentProfile();
+  if(!p) throw new Error('Select your KUDOS profile before submitting.');
+
   if(state.mode==='demo'){
-    if(type==='recognition') state.data.recognition.push({id:uid('REC'),submitter_profile_id:p.id,recognised_profile_id:fd.get('recognised_profile_id'),reason:fd.get('reason'),date:today(),status:'submitted'});
+    if(type==='recognition') state.data.recognition.push({id:uid('REC'),submitter_profile_id:p.id,recognised_profile_id:null,nominated_person:fd.get('nominated_person'),reason:fd.get('reason'),date:today(),status:'submitted'});
     if(type==='innovation') state.data.innovation.push({id:uid('INN'),profile_id:p.id,title:fd.get('title'),description:fd.get('description'),date:today(),status:'submitted'});
-    if(type==='safety') state.data.safety.push({id:uid('SAFE'),profile_id:p.id,category:fd.get('category'),external_reference:fd.get('external_reference'),date:today(),status:'submitted'});
-    saveDemo();state.notice='Saved. This contribution is worth 10 KUDOS points.';closeModal();return;
+    if(type==='safety') state.data.safety.push({id:uid('SAFE'),profile_id:p.id,category:fd.get('category'),description:fd.get('description'),external_reference:fd.get('external_reference'),date:today(),status:'submitted'});
+    saveDemo();
+    try{
+      await sendContributionNotification(type,fd,p);
+      state.notice='Saved. This contribution is worth 10 KUDOS points and the notification was submitted for email delivery.';
+    }catch(err){
+      console.error(err);
+      state.notice='Saved in KUDOS, but the email notification could not be submitted. Please tell a KUDOS administrator.';
+    }
+    closeModal();return;
   }
+
   let q;
-  if(type==='recognition') q=supabase.from('recognition_entries').insert({submitter_profile_id:p.id,recognised_profile_id:fd.get('recognised_profile_id'),reason:fd.get('reason')});
-  if(type==='innovation') q=supabase.from('innovation_entries').insert({profile_id:p.id,title:fd.get('title'),description:fd.get('description')});
-  if(type==='safety') q=supabase.from('safety_entries').insert({profile_id:p.id,category:fd.get('category'),external_reference:fd.get('external_reference')});
-  const {error}=await q;if(error)throw error;state.notice='Saved. This contribution is worth 10 KUDOS points.';await refresh();
+  if(type==='recognition') q=supabase.from('recognition_entries').insert({
+    submitter_profile_id:p.id,
+    recognised_profile_id:null,
+    nominated_person:String(fd.get('nominated_person')||'').trim(),
+    reason:String(fd.get('reason')||'').trim()
+  });
+  if(type==='innovation') q=supabase.from('innovation_entries').insert({
+    profile_id:p.id,
+    title:String(fd.get('title')||'').trim(),
+    description:String(fd.get('description')||'').trim()
+  });
+  if(type==='safety') q=supabase.from('safety_entries').insert({
+    profile_id:p.id,
+    category:String(fd.get('category')||'').trim(),
+    description:String(fd.get('description')||'').trim(),
+    external_reference:String(fd.get('external_reference')||'').trim()
+  });
+
+  const {error}=await q;
+  if(error) throw error;
+
+  let emailSubmitted=true;
+  try{
+    await sendContributionNotification(type,fd,p);
+  }catch(err){
+    console.error('Contribution saved but Netlify notification failed',err);
+    emailSubmitted=false;
+  }
+
+  state.notice=emailSubmitted
+    ? 'Saved. This contribution is worth 10 KUDOS points and the notification was submitted for email delivery.'
+    : 'Saved in KUDOS, but the email notification could not be submitted. Please tell a KUDOS administrator.';
+  await refresh();
 }
+
 async function submitChallenge(fd){
   const p=currentProfile(); const challengeTeam=(state.mode==='supabase'?(state.appUser?.role==='admin'?(fd.get('team_id')||adminTeamId()):state.appUser?.team_id):p.team_id); const rec={id:uid('CH'),code:uid('CH'),team_id:challengeTeam,title:fd.get('title'),description:fd.get('description'),target:Number(fd.get('target')),unit:fd.get('unit'),source_type:fd.get('source_type'),start_date:fd.get('start_date'),end_date:fd.get('end_date'),active:true,psfs:fd.getAll('psfs')};
   if(state.mode==='demo'){state.data.challenges.push(rec);saveDemo();state.notice='Saved. The new challenge is active for your team.';closeModal();return;}
   const {data,error}=await supabase.from('challenges').insert({team_id:rec.team_id,title:rec.title,description:rec.description,target:rec.target,unit:rec.unit,source_type:rec.source_type,start_date:rec.start_date,end_date:rec.end_date,active:true}).select().single(); if(error)throw error;
   if(rec.psfs.length){const {data:psfRows,error:pe}=await supabase.from('psfs').select('id,name').in('name',rec.psfs);if(pe)throw pe;const {error:ce}=await supabase.from('challenge_psfs').insert(psfRows.map(x=>({challenge_id:data.id,psf_id:x.id})));if(ce)throw ce;}
   state.notice='Saved. The new challenge is active for your team.';await refresh();
+}
+
+
+async function deleteAdminEntry(type,id){
+  if(state.mode!=='supabase' || !isFullAdmin()) throw new Error('Administrator permission is required.');
+  const tables={
+    progress:'progress_entries',
+    recognition:'recognition_entries',
+    innovation:'innovation_entries',
+    safety:'safety_entries'
+  };
+  const table=tables[type];
+  if(!table) throw new Error('Unknown entry type.');
+  const ok=window.confirm('Remove this entry from KUDOS? This immediately changes challenge totals and scores. Any email already sent cannot be recalled.');
+  if(!ok) return;
+  const {error}=await supabase.from(table).delete().eq('id',id);
+  if(error) throw error;
+  state.notice='Entry removed. Challenge progress and KUDOS scores have been recalculated.';
+  await refresh();
 }
 
 function bind(){
@@ -557,6 +782,7 @@ function bind(){
   document.querySelectorAll('[data-log]').forEach(b=>b.onclick=()=>{state.view='log';state.challengeFilter=b.dataset.log;render()});
   document.querySelectorAll('[data-detail]').forEach(b=>b.onclick=()=>{state.view='progress';state.challengeFilter=b.dataset.detail;render()});
   document.querySelectorAll('[data-special]').forEach(b=>b.onclick=()=>showModal(specialModal(b.dataset.special)));
+  document.querySelectorAll('[data-delete-entry]').forEach(b=>b.onclick=async()=>{try{await deleteAdminEntry(b.dataset.entryType,b.dataset.deleteEntry)}catch(err){state.notice=`Could not remove entry: ${err.message||err}`;render()}});
   document.getElementById('teamFilter')?.addEventListener('change',e=>{state.teamFilter=e.target.value;render()});
   document.querySelectorAll('[data-mode]').forEach(b=>b.onclick=()=>{state.progressMode=b.dataset.mode;render()});
   document.getElementById('progressTeam')?.addEventListener('change',e=>{state.teamFilter=e.target.value;const first=state.data.profiles.find(p=>p.team_id===e.target.value);if(first)state.profileFilter=first.id;render()});
