@@ -17,7 +17,9 @@ const state = {
   challengeFilter: 'all',
   progressMode: 'team',
   data: null,
-  notice: ''
+  notice: '',
+  authUser: null,
+  appUser: null
 };
 
 const uid = (prefix='ID') => `${prefix}-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2,6).toUpperCase()}`;
@@ -91,8 +93,26 @@ async function loadSupabase(){
   };
 }
 
+
+async function loadAdminSession(){
+  if(state.mode!=='supabase' || !supabase) return;
+  const {data:{session}} = await supabase.auth.getSession();
+  state.authUser = session?.user || null;
+  state.appUser = null;
+  if(state.authUser){
+    const {data,error} = await supabase.from('app_users').select('*').eq('auth_user_id',state.authUser.id).maybeSingle();
+    if(!error) state.appUser = data || null;
+  }
+}
+function isAdmin(){ return ['rep','admin'].includes(state.appUser?.role); }
+function adminTeamId(){
+  if(state.appUser?.role==='rep') return state.appUser.team_id;
+  return state.teamFilter || currentProfile()?.team_id || state.data?.teams?.[0]?.id || '';
+}
+
 async function refresh(){
   try{
+    if(state.mode==='supabase') await loadAdminSession();
     state.data = state.mode==='demo' ? loadDemo() : await loadSupabase();
     if(!state.profileId && state.data.profiles.length) state.profileId=state.data.profiles[0].id;
     if(!state.profileFilter) state.profileFilter=state.profileId;
@@ -265,9 +285,11 @@ function contributeView(){
 }
 
 function repView(){
-  const p=currentProfile(), isRep=['rep','admin'].includes(p?.role); const team=p?.team_id||state.teamFilter; const cs=activeTeamChallenges(team); const cov=psfCoverage(team);
-  if(!isRep) return `<div class="section-title"><h2>Performance Representative</h2></div><div class="notice">This screen is reserved for Performance Representatives and KUDOS administrators. In production these controls are protected by Supabase Auth.</div>`;
-  return `<div class="section-title"><h2>Performance Representative</h2><p>${esc(teamName(team))}</p></div><div class="grid two"><div class="card"><h3 style="margin-top:0">Portfolio health</h3><div class="kpi-list"><div class="kpi"><b>${cs.length}</b><span>Active challenges</span></div><div class="kpi"><b>${cov.count}/9</b><span>PSFs covered</span></div><div class="kpi"><b>${pct(teamAverage(team))}</b><span>Average complete</span></div><div class="kpi"><b>${fmt(teamScore(team))}</b><span>Team KUDOS</span></div></div><div class="coverage" style="margin-top:14px"><span style="width:${cov.count/9*100}%"></span></div></div><div class="card"><h3 style="margin-top:0">Term challenge portfolio</h3><p class="challenge-desc">Create 5–7 simple, measurable challenges. Across the portfolio cover all nine Performance Shaping Factors.</p><button class="btn navy" data-action="newChallenge">Create challenge</button></div></div>
+  const team=state.mode==='demo' ? (currentProfile()?.team_id||state.teamFilter) : adminTeamId(); const cs=activeTeamChallenges(team); const cov=psfCoverage(team);
+  if(state.mode==='supabase' && !state.authUser) return `<div class="section-title"><h2>Performance Representative / Admin</h2></div><div class="card"><h3>Administrator sign in</h3><p class="challenge-desc">Ordinary users do not need an account. Performance Representatives and KUDOS administrators sign in here.</p><button class="btn navy" data-action="adminLogin">Sign in</button></div>`;
+  if(state.mode==='supabase' && state.authUser && !state.appUser) return `<div class="section-title"><h2>Performance Representative / Admin</h2></div><div class="notice">You are signed in, but this account has not yet been granted a KUDOS administrator or Performance Representative role.</div><div class="actions"><button class="btn ghost" data-action="adminLogout">Sign out</button></div>`;
+  if(state.mode==='demo' && !['rep','admin'].includes(currentProfile()?.role)) return `<div class="section-title"><h2>Performance Representative</h2></div><div class="notice">This screen is reserved for Performance Representatives and KUDOS administrators.</div>`;
+  return `<div class="section-title"><h2>Performance Representative / Admin</h2><p>${esc(teamName(team))}${state.mode==='supabase'&&state.appUser?` • ${esc(state.appUser.role.toUpperCase())}`:''}</p></div>${state.mode==='supabase'?`<div class="actions" style="margin-bottom:14px"><button class="btn ghost" data-action="adminLogout">Sign out admin</button></div>`:''}<div class="grid two"><div class="card"><h3 style="margin-top:0">Portfolio health</h3><div class="kpi-list"><div class="kpi"><b>${cs.length}</b><span>Active challenges</span></div><div class="kpi"><b>${cov.count}/9</b><span>PSFs covered</span></div><div class="kpi"><b>${pct(teamAverage(team))}</b><span>Average complete</span></div><div class="kpi"><b>${fmt(teamScore(team))}</b><span>Team KUDOS</span></div></div><div class="coverage" style="margin-top:14px"><span style="width:${cov.count/9*100}%"></span></div></div><div class="card"><h3 style="margin-top:0">Term challenge portfolio</h3><p class="challenge-desc">Create 5–7 simple, measurable challenges. Across the portfolio cover all nine Performance Shaping Factors.</p><button class="btn navy" data-action="newChallenge">Create challenge</button></div></div>
   <div class="section-title"><h2>PSF coverage</h2><p>${cov.count===9?'All nine covered':'Close the remaining gaps before launch'}</p></div><div class="psf-grid">${PSFS.map(x=>`<div class="psf ${cov.covered.has(x)?'on':''}"><span>${cov.covered.has(x)?'✓':'○'}</span>${esc(x)}</div>`).join('')}</div>
   <div class="section-title"><h2>Challenges</h2></div><div class="table-wrap"><table><thead><tr><th>Challenge</th><th>Target</th><th>Actual</th><th>Complete</th><th>PSFs</th></tr></thead><tbody>${cs.map(c=>{const s=challengeStats(c);return `<tr><td>${esc(c.title)}</td><td>${fmt(c.target)} ${esc(c.unit)}</td><td>${fmt(s.actual)}</td><td>${pct(s.completion)}</td><td>${(c.psfs||[]).map(esc).join(', ')}</td></tr>`}).join('')}</tbody></table></div>`;
 }
@@ -286,8 +308,30 @@ function specialModal(type){
   if(type==='innovation') return `<div class="modal-backdrop" id="modal"><div class="modal"><h2>Submit an innovation</h2><form id="specialForm" data-type="innovation"><div class="field"><label>Title</label><input name="title" required placeholder="Short, clear idea"></div><div class="field"><label>Description</label><textarea name="description" required placeholder="What could be better and what do you suggest?"></textarea></div><button class="btn primary" type="submit">Submit idea (+10 points)</button></form></div></div>`;
   return `<div class="modal-backdrop" id="modal"><div class="modal"><h2>Record Flight Safety contribution</h2><form id="specialForm" data-type="safety"><div class="notice">Do not enter sensitive occurrence narrative here. KUDOS records only that an eligible safety contribution was made.</div><div class="field" style="margin-top:14px"><label>Category</label><input name="category" required placeholder="e.g. Flight Safety report / good catch"></div><div class="field"><label>External reference <span class="help">optional</span></label><input name="external_reference" placeholder="Reference from authorised system"></div><button class="btn primary" type="submit">Record contribution (+10 points)</button></form></div></div>`;
 }
+
+function adminLoginModal(){
+  return `<div class="modal-backdrop" id="modal"><div class="modal"><h2>Admin / Performance Rep sign in</h2><form id="adminLoginForm"><div class="field"><label>Email</label><input name="email" type="email" autocomplete="email" required></div><div class="field"><label>Password</label><input name="password" type="password" autocomplete="current-password" required></div><button class="btn primary" type="submit">Sign in</button></form></div></div>`;
+}
+async function submitAdminLogin(fd){
+  const email=String(fd.get('email')||'').trim();
+  const password=String(fd.get('password')||'');
+  const {error}=await supabase.auth.signInWithPassword({email,password});
+  if(error) throw error;
+  await loadAdminSession();
+  if(!state.appUser){
+    state.notice='Signed in, but this account has not yet been granted KUDOS admin access.';
+  } else {
+    state.notice=`Signed in as ${state.appUser.role}.`;
+    if(state.appUser.team_id) state.teamFilter=state.appUser.team_id;
+  }
+  closeModal();
+}
+async function adminLogout(){
+  await supabase.auth.signOut(); state.authUser=null; state.appUser=null; state.notice='Administrator signed out.'; render();
+}
+
 function challengeModal(){
-  const p=currentProfile();return `<div class="modal-backdrop" id="modal"><div class="modal"><h2>Create a team challenge</h2><form id="challengeForm"><div class="grid two"><div class="field"><label>Challenge name</label><input name="title" required placeholder="e.g. Move Together"></div><div class="field"><label>Measure</label><input name="unit" required placeholder="km, pauses, shares..."></div></div><div class="field"><label>Objective</label><textarea name="description" required placeholder="One sentence. If it cannot be explained in one sentence, simplify it."></textarea></div><div class="grid two"><div class="field"><label>Team target</label><input name="target" type="number" min="0" step="any" required></div><div class="field"><label>Source type</label><select name="source_type"><option value="progress">Normal progress</option><option value="recognition">Recognition count</option><option value="innovation">Innovation count</option><option value="safety">Flight Safety count</option></select></div></div><div class="grid two"><div class="field"><label>Start date</label><input name="start_date" type="date" value="${today()}" required></div><div class="field"><label>End date</label><input name="end_date" type="date" required></div></div><div class="field"><label>Performance Shaping Factors</label><div class="psf-grid">${PSFS.map(x=>`<label class="psf"><input type="checkbox" name="psfs" value="${esc(x)}">${esc(x)}</label>`).join('')}</div></div><button class="btn primary" type="submit">Create challenge</button></form></div></div>`;
+  const p=currentProfile(); const teamSelect=(state.mode==='supabase'&&state.appUser?.role==='admin')?`<div class="field"><label>Team</label><select name="team_id" required>${state.data.teams.map(t=>`<option value="${t.id}" ${t.id===adminTeamId()?'selected':''}>${esc(t.name)}</option>`).join('')}</select></div>`:''; return `<div class="modal-backdrop" id="modal"><div class="modal"><h2>Create a team challenge</h2><form id="challengeForm">${teamSelect}<div class="grid two"><div class="field"><label>Challenge name</label><input name="title" required placeholder="e.g. Move Together"></div><div class="field"><label>Measure</label><input name="unit" required placeholder="km, pauses, shares..."></div></div><div class="field"><label>Objective</label><textarea name="description" required placeholder="One sentence. If it cannot be explained in one sentence, simplify it."></textarea></div><div class="grid two"><div class="field"><label>Team target</label><input name="target" type="number" min="0" step="any" required></div><div class="field"><label>Source type</label><select name="source_type"><option value="progress">Normal progress</option><option value="recognition">Recognition count</option><option value="innovation">Innovation count</option><option value="safety">Flight Safety count</option></select></div></div><div class="grid two"><div class="field"><label>Start date</label><input name="start_date" type="date" value="${today()}" required></div><div class="field"><label>End date</label><input name="end_date" type="date" required></div></div><div class="field"><label>Performance Shaping Factors</label><div class="psf-grid">${PSFS.map(x=>`<label class="psf"><input type="checkbox" name="psfs" value="${esc(x)}">${esc(x)}</label>`).join('')}</div></div><button class="btn primary" type="submit">Create challenge</button></form></div></div>`;
 }
 
 function page(){
@@ -332,7 +376,7 @@ async function submitSpecial(type,fd){
   const {error}=await q;if(error)throw error;state.notice='Saved. This contribution is worth 10 KUDOS points.';await refresh();
 }
 async function submitChallenge(fd){
-  const p=currentProfile(); const rec={id:uid('CH'),code:uid('CH'),team_id:p.team_id,title:fd.get('title'),description:fd.get('description'),target:Number(fd.get('target')),unit:fd.get('unit'),source_type:fd.get('source_type'),start_date:fd.get('start_date'),end_date:fd.get('end_date'),active:true,psfs:fd.getAll('psfs')};
+  const p=currentProfile(); const challengeTeam=(state.mode==='supabase'?(state.appUser?.role==='admin'?(fd.get('team_id')||adminTeamId()):state.appUser?.team_id):p.team_id); const rec={id:uid('CH'),code:uid('CH'),team_id:challengeTeam,title:fd.get('title'),description:fd.get('description'),target:Number(fd.get('target')),unit:fd.get('unit'),source_type:fd.get('source_type'),start_date:fd.get('start_date'),end_date:fd.get('end_date'),active:true,psfs:fd.getAll('psfs')};
   if(state.mode==='demo'){state.data.challenges.push(rec);saveDemo();state.notice='Saved. The new challenge is active for your team.';closeModal();return;}
   const {data,error}=await supabase.from('challenges').insert({team_id:rec.team_id,title:rec.title,description:rec.description,target:rec.target,unit:rec.unit,source_type:rec.source_type,start_date:rec.start_date,end_date:rec.end_date,active:true}).select().single(); if(error)throw error;
   if(rec.psfs.length){const {data:psfRows,error:pe}=await supabase.from('psfs').select('id,name').in('name',rec.psfs);if(pe)throw pe;const {error:ce}=await supabase.from('challenge_psfs').insert(psfRows.map(x=>({challenge_id:data.id,psf_id:x.id})));if(ce)throw ce;}
@@ -345,6 +389,8 @@ function bind(){
   document.querySelector('[data-action="closeModal"]')?.addEventListener('click',closeModal);
   document.querySelector('[data-action="newProfile"]')?.addEventListener('click',()=>showModal(newProfileModal()));
   document.querySelector('[data-action="saveProfile"]')?.addEventListener('click',()=>{const v=document.getElementById('profileSelect').value;state.profileId=v;state.profileFilter=v;localStorage.setItem('kudos_profile',v);state.teamFilter=profileById(v)?.team_id||state.teamFilter;closeModal()});
+  document.querySelector('[data-action="adminLogin"]')?.addEventListener('click',()=>showModal(adminLoginModal()));
+  document.querySelector('[data-action="adminLogout"]')?.addEventListener('click',()=>adminLogout());
   document.querySelector('[data-action="newChallenge"]')?.addEventListener('click',()=>showModal(challengeModal()));
   document.querySelectorAll('[data-log]').forEach(b=>b.onclick=()=>{state.view='log';state.challengeFilter=b.dataset.log;render()});
   document.querySelectorAll('[data-detail]').forEach(b=>b.onclick=()=>{state.view='progress';state.challengeFilter=b.dataset.detail;render()});
@@ -354,6 +400,7 @@ function bind(){
   document.getElementById('progressTeam')?.addEventListener('change',e=>{state.teamFilter=e.target.value;const first=state.data.profiles.find(p=>p.team_id===e.target.value);if(first)state.profileFilter=first.id;render()});
   document.getElementById('progressProfile')?.addEventListener('change',e=>{state.profileFilter=e.target.value;render()});
   document.getElementById('progressChallenge')?.addEventListener('change',e=>{state.challengeFilter=e.target.value;render()});
+  document.getElementById('adminLoginForm')?.addEventListener('submit',async e=>{e.preventDefault();try{await submitAdminLogin(new FormData(e.target))}catch(err){state.notice=`Could not sign in: ${err.message||err}`;render()}});
   document.getElementById('profileForm')?.addEventListener('submit',async e=>{e.preventDefault();try{await submitProfile(new FormData(e.target))}catch(err){state.notice=`Could not save: ${err.message||err}`;render()}});
   document.getElementById('progressForm')?.addEventListener('submit',async e=>{e.preventDefault();try{await submitProgress(new FormData(e.target))}catch(err){state.notice=`Could not save: ${err.message||err}`;render()}});
   document.getElementById('specialForm')?.addEventListener('submit',async e=>{e.preventDefault();try{await submitSpecial(e.target.dataset.type,new FormData(e.target))}catch(err){state.notice=`Could not save: ${err.message||err}`;render()}});
