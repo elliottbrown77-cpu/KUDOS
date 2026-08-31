@@ -1,12 +1,16 @@
-KUDOS REPORTS BUILD
+KUDOS REPORTS + CACHE FIX BUILD
 
-Upload ALL files in this folder to the ROOT of your GitHub repository and commit the changes.
-There are no asset subfolders.
+Upload ALL files in this folder to the ROOT of the GitHub repository.
 
-New in this build:
+This version contains:
 - Reports tab
+- Top 5 individual contributors by challenge
+- Team challenge standings
 - Overall team challenge leaderboard
 - Overall team KUDOS leaderboard
-- Side-by-side team standings for each matching challenge
-- Top 5 individual contributors for every challenge
-- Top 5 overall individual KUDOS scores
+- Graph fix
+- Root-level image fix
+- New update-friendly service worker
+
+After Netlify redeploys, refresh the website once.
+The old kudos-v2 cache will be removed automatically.
