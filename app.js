@@ -16,6 +16,7 @@ const state = {
   profileFilter: '',
   challengeFilter: 'all',
   progressMode: 'team',
+  reportChallengeKey: '',
   data: null,
   notice: '',
   authUser: null,
@@ -194,7 +195,7 @@ function header(){
   <button class="profile-chip" data-action="profile"><div>${esc(p?.name||'Select profile')}</div><span>${esc(p?teamName(p.team_id):'')}</span></button></header>`;
 }
 function nav(){
-  const items=[['home','⌂','Home'],['challenges','◎','Challenges'],['log','＋','Log'],['progress','↗','Progress'],['contribute','★','Contribute'],['rep','⚙','Rep']];
+  const items=[['home','⌂','Home'],['challenges','◎','Challenges'],['log','＋','Log'],['progress','↗','Progress'],['reports','▥','Reports'],['contribute','★','Contribute'],['rep','⚙','Rep']];
   return `<nav class="bottom-nav">${items.map(([v,i,l])=>`<button class="nav-btn ${state.view===v?'active':''}" data-view="${v}"><b>${i}</b>${l}</button>`).join('')}</nav>`;
 }
 function crests(){return `<div class="crest-row">${[['chf-crest.png','CHF'],['845-crest.png','845 NAS'],['846-crest.png','846 NAS'],['847-crest.png','847 NAS']].map(([f,l])=>`<div><img src="${f}" alt="${l}"><div class="crest-label">${l}</div></div>`).join('')}</div>`}
@@ -302,6 +303,142 @@ function singleChallengeProgress(c,profileId){
   return `<div class="section-title"><h2>${esc(c.title)}</h2><p>${esc(teamName(c.team_id))}</p></div><div class="grid two"><div class="card"><div class="kpi-list"><div class="kpi"><b>${fmt(s.actual)}</b><span>Team progress (${esc(c.unit)})</span></div><div class="kpi"><b>${pct(s.completion)}</b><span>Complete</span></div><div class="kpi"><b>${fmt(s.remaining)}</b><span>Remaining</span></div><div class="kpi"><b>${s.contributors}</b><span>Contributors</span></div></div>${state.progressMode==='individual'?`<div class="notice success" style="margin-top:14px">Selected person contribution: <strong>${fmt(mine)} ${esc(c.unit)}</strong>. The target remains collective.</div>`:''}</div><div class="card"><h3 style="margin-top:0">Progress over time</h3>${svgChart(c,state.progressMode==='individual'?profileId:null)}</div></div>`;
 }
 
+
+function challengeGroupKey(c){
+  return [String(c.title||'').trim().toLowerCase(),String(c.unit||'').trim().toLowerCase(),String(c.source_type||'progress').trim().toLowerCase()].join('|');
+}
+function challengeGroups(){
+  const map=new Map();
+  (state.data.challenges||[]).filter(c=>c.active!==false).forEach(c=>{
+    const key=challengeGroupKey(c);
+    if(!map.has(key)) map.set(key,{key,title:c.title,unit:c.unit,source_type:c.source_type,challenges:[]});
+    map.get(key).challenges.push(c);
+  });
+  return [...map.values()].sort((a,b)=>String(a.title).localeCompare(String(b.title)));
+}
+function overallTeamReportRows(){
+  const rows=(state.data.teams||[]).map(t=>{
+    const cs=activeTeamChallenges(t.id);
+    const avg=cs.length?cs.reduce((sum,c)=>sum+Math.min(challengeStats(c).completion,1),0)/cs.length:0;
+    const completed=cs.filter(c=>challengeStats(c).completion>=1).length;
+    const people=(state.data.profiles||[]).filter(p=>p.team_id===t.id&&p.active!==false).length;
+    return {team_id:t.id,name:t.name,challengeCount:cs.length,avg,completed,kudos:teamScore(t.id),people};
+  });
+  rows.sort((a,b)=>{
+    if(Boolean(a.challengeCount)!==Boolean(b.challengeCount)) return b.challengeCount-a.challengeCount;
+    return b.avg-a.avg || b.kudos-a.kudos || a.name.localeCompare(b.name);
+  });
+  let rank=0;
+  rows.forEach(r=>{r.rank=r.challengeCount?++rank:null});
+  return rows;
+}
+function kudosTeamReportRows(){
+  const rows=(state.data.teams||[]).map(t=>({
+    team_id:t.id,name:t.name,kudos:teamScore(t.id),
+    people:(state.data.profiles||[]).filter(p=>p.team_id===t.id&&p.active!==false).length
+  })).sort((a,b)=>b.kudos-a.kudos||a.name.localeCompare(b.name));
+  let rank=0, last=null, seen=0;
+  rows.forEach(r=>{seen++; if(last===null||r.kudos!==last) rank=seen; r.rank=rank; last=r.kudos;});
+  return rows;
+}
+function groupTeamRows(group){
+  const rows=(state.data.teams||[]).map(t=>{
+    const matches=group.challenges.filter(c=>c.team_id===t.id);
+    if(!matches.length) return {team_id:t.id,name:t.name,has:false,actual:0,target:0,completion:0,contributors:0,rank:null};
+    let actual=0,target=0,contributors=0;
+    matches.forEach(c=>{
+      const s=challengeStats(c); actual+=Number(s.actual||0); target+=Number(s.target||0); contributors+=Number(s.contributors||0);
+    });
+    return {team_id:t.id,name:t.name,has:true,actual,target,completion:target?Math.min(actual/target,1):0,contributors};
+  });
+  const ranked=rows.filter(r=>r.has).sort((a,b)=>b.completion-a.completion||b.actual-a.actual||a.name.localeCompare(b.name));
+  let lastComp=null, rank=0;
+  ranked.forEach((r,i)=>{if(lastComp===null||r.completion!==lastComp)rank=i+1;r.rank=rank;lastComp=r.completion});
+  const ranks=Object.fromEntries(ranked.map(r=>[r.team_id,r.rank]));
+  rows.forEach(r=>r.rank=ranks[r.team_id]||null);
+  return rows.sort((a,b)=>(a.rank??999)-(b.rank??999)||a.name.localeCompare(b.name));
+}
+function groupTopIndividuals(group,limit=5){
+  const ids=new Set(group.challenges.map(c=>c.id));
+  const totals=new Map();
+  (state.data.profileTotals||[]).filter(x=>ids.has(x.challenge_id)).forEach(x=>{
+    const n=Number(x.contribution||0);
+    if(n<=0) return;
+    totals.set(x.profile_id,(totals.get(x.profile_id)||0)+n);
+  });
+  if(state.mode==='demo'){
+    group.challenges.forEach(c=>{
+      (state.data.profiles||[]).filter(p=>p.team_id===c.team_id).forEach(p=>{
+        const n=personalContribution(p.id,c);
+        if(n>0) totals.set(p.id,(totals.get(p.id)||0)+n);
+      });
+    });
+  }
+  return [...totals.entries()].map(([profile_id,contribution])=>{
+    const p=profileById(profile_id);
+    return {profile_id,name:p?.name||'Profile',team_id:p?.team_id||'',team:teamName(p?.team_id),contribution};
+  }).sort((a,b)=>b.contribution-a.contribution||a.name.localeCompare(b.name)).slice(0,limit);
+}
+function topKudosIndividuals(limit=5){
+  if(state.mode==='supabase'){
+    return [...(state.data.profileScores||[])].map(x=>({
+      profile_id:x.profile_id,name:x.name||profileById(x.profile_id)?.name||'Profile',
+      team_id:x.team_id,team:teamName(x.team_id),score:Number(x.kudos_score||0)
+    })).sort((a,b)=>b.score-a.score||a.name.localeCompare(b.name)).slice(0,limit);
+  }
+  return (state.data.profiles||[]).map(p=>({profile_id:p.id,name:p.name,team_id:p.team_id,team:teamName(p.team_id),score:profileScore(p.id)}))
+    .sort((a,b)=>b.score-a.score||a.name.localeCompare(b.name)).slice(0,limit);
+}
+function rankPill(rank){
+  if(!rank) return '<span class="rank-pill muted-rank">—</span>';
+  return `<span class="rank-pill ${rank===1?'winner':''}">${rank}</span>`;
+}
+function reportProgressBar(value){
+  return `<div class="report-track"><span style="width:${clamp(Number(value||0)*100,0,100)}%"></span></div>`;
+}
+function reportsView(){
+  const groups=challengeGroups();
+  if(!state.reportChallengeKey && groups.length) state.reportChallengeKey=groups[0].key;
+  const selected=groups.find(g=>g.key===state.reportChallengeKey)||groups[0];
+  const overall=overallTeamReportRows();
+  const kudosTeams=kudosTeamReportRows();
+  const challengeRows=selected?groupTeamRows(selected):[];
+  const topOverall=topKudosIndividuals(5);
+  const groupOptions=groups.map(g=>`<option value="${esc(g.key)}" ${g.key===selected?.key?'selected':''}>${esc(g.title)} — ${esc(g.unit)}</option>`).join('');
+
+  const overallRows=overall.map(r=>`<tr><td>${rankPill(r.rank)}</td><td><strong>${esc(r.name)}</strong></td><td>${r.challengeCount?pct(r.avg):'—'}${r.challengeCount?reportProgressBar(r.avg):''}</td><td>${r.completed}/${r.challengeCount}</td><td>${fmt(r.kudos)}</td><td>${r.people}</td></tr>`).join('');
+  const kudosRows=kudosTeams.map(r=>`<tr><td>${rankPill(r.rank)}</td><td><strong>${esc(r.name)}</strong></td><td><strong>${fmt(r.kudos)}</strong></td><td>${r.people}</td></tr>`).join('');
+  const challengeCards=challengeRows.map(r=>`<div class="card team-rank-card ${r.rank===1?'leader-card':''}"><div class="team-rank-head"><div>${rankPill(r.rank)}<strong>${esc(r.name)}</strong></div><span>${r.has?pct(r.completion):'Not set'}</span></div>${r.has?`${reportProgressBar(r.completion)}<div class="progress-line"><span><strong>${fmt(r.actual)}</strong> / ${fmt(r.target)} ${esc(selected.unit)}</span><span>${r.contributors} contributor${r.contributors===1?'':'s'}</span></div>`:`<div class="help">This team does not currently have a matching challenge.</div>`}</div>`).join('');
+
+  const topByChallenge=groups.map(g=>{
+    const top=groupTopIndividuals(g,5);
+    const rows=top.map((r,i)=>`<tr><td>${rankPill(i+1)}</td><td><strong>${esc(r.name)}</strong><div class="help">${esc(r.team)}</div></td><td class="num"><strong>${fmt(r.contribution)}</strong> ${esc(g.unit)}</td></tr>`).join('');
+    return `<div class="card leaderboard-card"><div class="challenge-head"><div><h3>${esc(g.title)}</h3><div class="help">${esc(g.unit)} • ${g.challenges.length} team challenge${g.challenges.length===1?'':'s'}</div></div><span class="unit-badge">Top 5</span></div>${top.length?`<div class="mini-table"><table><thead><tr><th>Rank</th><th>Individual</th><th>Contribution</th></tr></thead><tbody>${rows}</tbody></table></div>`:'<div class="empty compact-empty">No contributions yet.</div>'}</div>`;
+  }).join('');
+
+  const topOverallRows=topOverall.map((r,i)=>`<tr><td>${rankPill(i+1)}</td><td><strong>${esc(r.name)}</strong><div class="help">${esc(r.team)}</div></td><td class="num"><strong>${fmt(r.score)}</strong></td></tr>`).join('');
+
+  return `<div class="section-title"><h2>Reports</h2><p>Individual contribution and team standings</p></div>
+  <div class="report-intro card"><div><strong>How the overall lead is calculated</strong><div class="help">Overall challenge position uses each team's average percentage completion across its active challenges, capped at 100% per challenge. KUDOS points are shown separately.</div></div></div>
+
+  <div class="section-title"><h2>Overall team standings</h2><p>Challenge performance and KUDOS score</p></div>
+  <div class="grid two">
+    <div class="card"><h3 class="report-card-title">Overall challenge lead</h3><div class="table-wrap report-table"><table><thead><tr><th>Rank</th><th>Team</th><th>Avg completion</th><th>Completed</th><th>KUDOS</th><th>People</th></tr></thead><tbody>${overallRows}</tbody></table></div></div>
+    <div class="card"><h3 class="report-card-title">Overall KUDOS score</h3><div class="table-wrap report-table"><table><thead><tr><th>Rank</th><th>Team</th><th>KUDOS score</th><th>People</th></tr></thead><tbody>${kudosRows}</tbody></table></div></div>
+  </div>
+
+  <div class="section-title"><h2>Challenge team standings</h2><p>Teams alongside each other</p></div>
+  <div class="card"><div class="field" style="margin-bottom:0"><label>Challenge</label><select id="reportChallenge">${groupOptions}</select></div></div>
+  ${selected?`<div class="section-title"><h2>${esc(selected.title)}</h2><p>${esc(selected.unit)} • ranked by percentage complete</p></div><div class="grid four report-team-grid">${challengeCards}</div>`:'<div class="empty">No active challenges yet.</div>'}
+
+  <div class="section-title"><h2>Top 5 individuals by challenge</h2><p>Largest contribution to each team target</p></div>
+  <div class="grid two">${topByChallenge||'<div class="empty">No challenge contribution data yet.</div>'}</div>
+
+  <div class="section-title"><h2>Top 5 overall KUDOS scores</h2><p>Across challenge activity, recognition, innovation and safety contributions</p></div>
+  <div class="card leaderboard-card">${topOverallRows?`<div class="mini-table"><table><thead><tr><th>Rank</th><th>Individual</th><th>KUDOS score</th></tr></thead><tbody>${topOverallRows}</tbody></table></div>`:'<div class="empty compact-empty">No scores yet.</div>'}</div>
+  <div class="notice" style="margin-top:14px">Challenge team comparisons currently group challenges when the <strong>challenge name, unit and contribution type match</strong>. If teams use different names for the same intended challenge, they will appear as separate challenge groups.</div>`;
+}
+
 function contributeView(){
   return `<div class="section-title"><h2>Contribute</h2><p>Useful behaviours beyond routine challenge entries</p></div><div class="grid three">
   <div class="card"><h3>Recognise someone</h3><p class="challenge-desc">Specific recognition for a useful behaviour, contribution or act of leadership.</p><div class="score-badge">1 recognition • +10 points</div><div style="margin-top:14px"><button class="btn primary" data-special="recognition">Submit recognition</button></div></div>
@@ -360,7 +497,7 @@ function challengeModal(){
 }
 
 function page(){
-  const views={home:homeView,challenges:challengesView,log:()=>logView(),progress:progressView,contribute:contributeView,rep:repView};
+  const views={home:homeView,challenges:challengesView,log:()=>logView(),progress:progressView,reports:reportsView,contribute:contributeView,rep:repView};
   return `<div class="app-shell">${header()}<main>${state.notice?`<div class="notice ${state.notice.startsWith('Saved')?'success':''}">${esc(state.notice)}</div>`:''}${views[state.view]()}</main>${nav()}</div>`;
 }
 function render(extra=''){
@@ -425,6 +562,7 @@ function bind(){
   document.getElementById('progressTeam')?.addEventListener('change',e=>{state.teamFilter=e.target.value;const first=state.data.profiles.find(p=>p.team_id===e.target.value);if(first)state.profileFilter=first.id;render()});
   document.getElementById('progressProfile')?.addEventListener('change',e=>{state.profileFilter=e.target.value;render()});
   document.getElementById('progressChallenge')?.addEventListener('change',e=>{state.challengeFilter=e.target.value;render()});
+  document.getElementById('reportChallenge')?.addEventListener('change',e=>{state.reportChallengeKey=e.target.value;render()});
   document.getElementById('adminLoginForm')?.addEventListener('submit',async e=>{e.preventDefault();try{await submitAdminLogin(new FormData(e.target))}catch(err){state.notice=`Could not sign in: ${err.message||err}`;render()}});
   document.getElementById('profileForm')?.addEventListener('submit',async e=>{e.preventDefault();try{await submitProfile(new FormData(e.target))}catch(err){state.notice=`Could not save: ${err.message||err}`;render()}});
   document.getElementById('progressForm')?.addEventListener('submit',async e=>{e.preventDefault();try{await submitProgress(new FormData(e.target))}catch(err){state.notice=`Could not save: ${err.message||err}`;render()}});

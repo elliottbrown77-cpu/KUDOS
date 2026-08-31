@@ -1,19 +1,12 @@
-KUDOS IMAGE FIX BUILD
+KUDOS REPORTS BUILD
 
-All image files are now at the TOP LEVEL of the project.
-Upload every file in this folder directly to the root of your GitHub repository.
+Upload ALL files in this folder to the ROOT of your GitHub repository and commit the changes.
+There are no asset subfolders.
 
-You should see:
-845-crest.png
-846-crest.png
-847-crest.png
-chf-crest.png
-hero-merlin.png
-index.html
-app.js
-styles.css
-config.js
-manifest.webmanifest
-service-worker.js
-
-There is NO assets folder in this build.
+New in this build:
+- Reports tab
+- Overall team challenge leaderboard
+- Overall team KUDOS leaderboard
+- Side-by-side team standings for each matching challenge
+- Top 5 individual contributors for every challenge
+- Top 5 overall individual KUDOS scores
