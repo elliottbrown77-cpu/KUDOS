@@ -1,4 +1,4 @@
-const CACHE = 'kudos-v9-netlify-forms-fix';
+const CACHE = 'kudos-v9-profile-first-launch';
 const STATIC_ASSETS = [
   './hero-merlin.png',
   './chf-crest.png',

@@ -49,3 +49,14 @@ The JavaScript now creates its POST body from the exact static HTML form that Ne
 5. Configure the email notification on `kudos-contributions`.
 
 If a test submission does not appear under Verified submissions, also check the Spam submissions view before assuming it was not received.
+
+
+## Profile first-launch behaviour
+
+This build fixes profile selection on a new browser/device.
+
+- A saved ordinary profile is stored only in that browser's localStorage.
+- A brand-new browser/device no longer defaults to the first profile in the database.
+- First use requires the user to explicitly select an existing profile or create a new one.
+- If a previously cached profile is removed/deactivated, the local selection is cleared and the user is prompted again.
+- Existing users on devices that already have a valid saved profile continue straight into KUDOS.

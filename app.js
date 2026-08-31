@@ -138,10 +138,29 @@ async function refresh(){
     if(state.mode==='supabase') await loadAdminSession();
     state.data = state.mode==='demo' ? loadDemo() : await loadSupabase();
     if(state.mode==='supabase' && isFullAdmin()) state.data.adminEntries = await loadAdminEntries();
-    if(!state.profileId && state.data.profiles.length) state.profileId=state.data.profiles[0].id;
-    if(!state.profileFilter) state.profileFilter=state.profileId;
-    if(!state.teamFilter) state.teamFilter=currentProfile()?.team_id || state.data.teams[0]?.id || '';
+
+    // A normal KUDOS profile is deliberately remembered only in this browser/device.
+    // Never fall back to the first database profile on a new device.
+    if(state.profileId && !state.data.profiles.some(p=>p.id===state.profileId)){
+      state.profileId='';
+      state.profileFilter='';
+      localStorage.removeItem('kudos_profile');
+    }
+
+    if(state.profileId){
+      state.profileFilter = state.profileId;
+      state.teamFilter = currentProfile()?.team_id || state.teamFilter || state.data.teams[0]?.id || '';
+    }else{
+      state.profileFilter='';
+      if(!state.teamFilter) state.teamFilter=state.data.teams[0]?.id || '';
+    }
+
     render();
+
+    // First use on a browser/device: require an explicit profile choice or profile creation.
+    if(!currentProfile()){
+      showModal(profileModal(true));
+    }
   }catch(e){
     console.error(e); state.notice=`Could not load data: ${e.message||e}`; render();
   }
@@ -580,12 +599,25 @@ function repView(){
   ${adminModerationView()}`;
 }
 
-function profileModal(){
-  return `<div class="modal-backdrop" id="modal"><div class="modal"><h2>Select your profile</h2><p class="challenge-desc">KUDOS remembers this selection on this device. Ordinary users do not need an account.</p><div class="field"><label>Profile</label><select id="profileSelect">${state.data.profiles.map(p=>`<option value="${p.id}" ${p.id===state.profileId?'selected':''}>${esc(p.name)} — ${esc(teamName(p.team_id))}</option>`).join('')}</select></div><div class="actions"><button class="btn primary" data-action="saveProfile">Use this profile</button><button class="btn ghost" data-action="newProfile">Create profile</button><button class="btn ghost" data-action="closeModal">Cancel</button></div><div class="notice" style="margin-top:14px">Performance Rep/Admin controls should use protected login in production. The ordinary profile selector is intentionally low-friction.</div></div></div>`;
+function profileModal(required=false){
+  const hasCurrent=!!currentProfile();
+  const options=state.data.profiles.map(p=>`<option value="${p.id}" ${hasCurrent&&p.id===state.profileId?'selected':''}>${esc(p.name)} — ${esc(teamName(p.team_id))}</option>`).join('');
+  const placeholder=!hasCurrent?'<option value="" selected disabled>Choose your profile…</option>':'';
+  return `<div class="modal-backdrop" id="modal"><div class="modal"><h2>${required?'Welcome to KUDOS':'Select your profile'}</h2>
+    <p class="challenge-desc">${required?'Choose an existing profile or create yours to continue. ':''}KUDOS remembers the selection only in this browser/device. Ordinary users do not need a password.</p>
+    <div class="field"><label>Profile</label><select id="profileSelect">${placeholder}${options}</select></div>
+    <div class="actions">
+      <button class="btn primary" data-action="saveProfile">Use this profile</button>
+      <button class="btn ghost" data-action="newProfile">Create profile</button>
+      ${required?'':'<button class="btn ghost" data-action="closeModal">Cancel</button>'}
+    </div>
+    <div class="notice" style="margin-top:14px">Your selection is stored locally on this device. A new browser or device will ask you to select or create a profile again.</div>
+  </div></div>`;
 }
 
 function newProfileModal(){
-  return `<div class="modal-backdrop" id="modal"><div class="modal"><h2>Create your KUDOS profile</h2><form id="profileForm"><div class="field"><label>Name</label><input name="name" required placeholder="Full name"></div><div class="field"><label>Team</label><select name="team_id" required>${state.data.teams.map(t=>`<option value="${t.id}">${esc(t.name)}</option>`).join('')}</select></div><div class="notice">Profiles are deliberately simple. Do not put sensitive personal data into KUDOS.</div><div class="actions" style="margin-top:14px"><button class="btn primary" type="submit">Create profile</button><button class="btn ghost" type="button" data-action="closeModal">Cancel</button></div></form></div></div>`;
+  const required=!currentProfile();
+  return `<div class="modal-backdrop" id="modal"><div class="modal"><h2>Create your KUDOS profile</h2><form id="profileForm"><div class="field"><label>Name</label><input name="name" required placeholder="Full name"></div><div class="field"><label>Team</label><select name="team_id" required>${state.data.teams.map(t=>`<option value="${t.id}">${esc(t.name)}</option>`).join('')}</select></div><div class="notice">Profiles are deliberately simple. Do not put sensitive personal data into KUDOS.</div><div class="actions" style="margin-top:14px"><button class="btn primary" type="submit">Create profile</button>${required?'<button class="btn ghost" type="button" data-action="backToProfiles">Back to profile selection</button>':'<button class="btn ghost" type="button" data-action="closeModal">Cancel</button>'}</div></form></div></div>`;
 }
 
 function specialModal(type){
@@ -824,10 +856,19 @@ async function deleteAdminEntry(type,id){
 
 function bind(){
   document.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>{state.view=b.dataset.view;state.notice='';render()});
-  document.querySelector('[data-action="profile"]')?.addEventListener('click',()=>showModal(profileModal()));
-  document.querySelector('[data-action="closeModal"]')?.addEventListener('click',closeModal);
+  document.querySelector('[data-action="profile"]')?.addEventListener('click',()=>showModal(profileModal(false)));
+  document.querySelector('[data-action="closeModal"]')?.addEventListener('click',()=>{if(currentProfile())closeModal()});
   document.querySelector('[data-action="newProfile"]')?.addEventListener('click',()=>showModal(newProfileModal()));
-  document.querySelector('[data-action="saveProfile"]')?.addEventListener('click',()=>{const v=document.getElementById('profileSelect').value;state.profileId=v;state.profileFilter=v;localStorage.setItem('kudos_profile',v);state.teamFilter=profileById(v)?.team_id||state.teamFilter;closeModal()});
+  document.querySelector('[data-action="backToProfiles"]')?.addEventListener('click',()=>showModal(profileModal(true)));
+  document.querySelector('[data-action="saveProfile"]')?.addEventListener('click',()=>{
+    const v=document.getElementById('profileSelect')?.value||'';
+    if(!v) return;
+    state.profileId=v;
+    state.profileFilter=v;
+    localStorage.setItem('kudos_profile',v);
+    state.teamFilter=profileById(v)?.team_id||state.teamFilter;
+    closeModal();
+  });
   document.querySelector('[data-action="adminLogin"]')?.addEventListener('click',()=>showModal(adminLoginModal()));
   document.querySelector('[data-action="adminLogout"]')?.addEventListener('click',()=>adminLogout());
   document.querySelector('[data-action="newChallenge"]')?.addEventListener('click',()=>showModal(challengeModal()));
@@ -846,7 +887,7 @@ function bind(){
   document.getElementById('progressForm')?.addEventListener('submit',async e=>{e.preventDefault();try{await submitProgress(new FormData(e.target))}catch(err){state.notice=`Could not save: ${err.message||err}`;render()}});
   document.getElementById('specialForm')?.addEventListener('submit',async e=>{e.preventDefault();try{await submitSpecial(e.target.dataset.type,new FormData(e.target))}catch(err){state.notice=`Could not save: ${err.message||err}`;render()}});
   document.getElementById('challengeForm')?.addEventListener('submit',async e=>{e.preventDefault();try{await submitChallenge(new FormData(e.target))}catch(err){state.notice=`Could not save: ${err.message||err}`;render()}});
-  document.getElementById('modal')?.addEventListener('click',e=>{if(e.target.id==='modal')closeModal()});
+  document.getElementById('modal')?.addEventListener('click',e=>{if(e.target.id==='modal' && currentProfile())closeModal()});
 }
 
 if('serviceWorker' in navigator) navigator.serviceWorker.register('./service-worker.js').catch(()=>{});
