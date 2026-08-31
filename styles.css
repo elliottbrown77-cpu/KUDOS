@@ -113,3 +113,6 @@ main{max-width:1120px;margin:0 auto;padding:18px 16px 40px}
 
 .scoring-explainer{margin-bottom:16px;border-left:5px solid var(--sand)}
 .scoring-explainer strong{color:var(--navy)}
+
+/* Static Netlify forms are detected at build time but must never affect the UI. */
+.netlify-static-form{display:none!important}

@@ -60,3 +60,13 @@ This build fixes profile selection on a new browser/device.
 - First use requires the user to explicitly select an existing profile or create a new one.
 - If a previously cached profile is removed/deactivated, the local selection is cleared and the user is prompted again.
 - Existing users on devices that already have a valid saved profile continue straight into KUDOS.
+
+
+## Hidden Netlify form layout fix
+
+The four static Netlify forms remain in `index.html` for Netlify form detection,
+but are now forced to `display:none !important`.
+
+This removes the blank input boxes that were appearing below the Home screen.
+The AJAX submission code can still create `FormData` from forms that are not displayed,
+so Netlify capture and email notifications continue to work.

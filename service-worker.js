@@ -1,4 +1,4 @@
-const CACHE = 'kudos-v9-profile-first-launch';
+const CACHE = 'kudos-v10-hidden-forms-layout-fix';
 const STATIC_ASSETS = [
   './hero-merlin.png',
   './chf-crest.png',
