@@ -7,7 +7,7 @@
   "background_color": "#F5F6F2",
   "theme_color": "#0C2338",
   "icons": [
-    {"src":"assets/846-crest.png","sizes":"192x192","type":"image/png","purpose":"any maskable"},
-    {"src":"assets/846-crest.png","sizes":"512x512","type":"image/png","purpose":"any maskable"}
+    {"src":"846-crest.png","sizes":"192x192","type":"image/png","purpose":"any maskable"},
+    {"src":"846-crest.png","sizes":"512x512","type":"image/png","purpose":"any maskable"}
   ]
 }

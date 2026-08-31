@@ -1,0 +1,19 @@
+KUDOS IMAGE FIX BUILD
+
+All image files are now at the TOP LEVEL of the project.
+Upload every file in this folder directly to the root of your GitHub repository.
+
+You should see:
+845-crest.png
+846-crest.png
+847-crest.png
+chf-crest.png
+hero-merlin.png
+index.html
+app.js
+styles.css
+config.js
+manifest.webmanifest
+service-worker.js
+
+There is NO assets folder in this build.

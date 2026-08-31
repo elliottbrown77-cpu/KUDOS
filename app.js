@@ -190,14 +190,14 @@ function psfCoverage(teamId){
 
 function header(){
   const p=currentProfile();
-  return `<header class="topbar"><div class="brand"><img src="assets/chf-crest.png" alt="CHF crest"><div><strong>KUDOS</strong><small>CHF Human Performance</small></div></div>
+  return `<header class="topbar"><div class="brand"><img src="chf-crest.png" alt="CHF crest"><div><strong>KUDOS</strong><small>CHF Human Performance</small></div></div>
   <button class="profile-chip" data-action="profile"><div>${esc(p?.name||'Select profile')}</div><span>${esc(p?teamName(p.team_id):'')}</span></button></header>`;
 }
 function nav(){
   const items=[['home','⌂','Home'],['challenges','◎','Challenges'],['log','＋','Log'],['progress','↗','Progress'],['contribute','★','Contribute'],['rep','⚙','Rep']];
   return `<nav class="bottom-nav">${items.map(([v,i,l])=>`<button class="nav-btn ${state.view===v?'active':''}" data-view="${v}"><b>${i}</b>${l}</button>`).join('')}</nav>`;
 }
-function crests(){return `<div class="crest-row">${[['chf-crest.png','CHF'],['845-crest.png','845 NAS'],['846-crest.png','846 NAS'],['847-crest.png','847 NAS']].map(([f,l])=>`<div><img src="assets/${f}" alt="${l}"><div class="crest-label">${l}</div></div>`).join('')}</div>`}
+function crests(){return `<div class="crest-row">${[['chf-crest.png','CHF'],['845-crest.png','845 NAS'],['846-crest.png','846 NAS'],['847-crest.png','847 NAS']].map(([f,l])=>`<div><img src="${f}" alt="${l}"><div class="crest-label">${l}</div></div>`).join('')}</div>`}
 function progressCard(c,profileId=state.profileId){
   const s=challengeStats(c), mine=personalContribution(profileId,c), pc=clamp(s.completion*100,0,100);
   return `<article class="card challenge-card"><div class="challenge-head"><div><h3>${esc(c.title)}</h3><div class="score-badge">${esc(teamName(c.team_id))}</div></div><span class="unit-badge">${esc(c.unit)}</span></div>
