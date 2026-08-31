@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#0C2338" />
   <title>KUDOS | CHF Human Performance</title>
   <link rel="manifest" href="manifest.webmanifest" />
-  <link rel="stylesheet" href="styles.css?v=hidden-forms-fix-1" />
+  <link rel="stylesheet" href="styles.css?v=mobile-nav-safe-1" />
 
   <style>
     .netlify-static-form{display:none!important}
@@ -77,10 +77,10 @@
     if (cfg.SUPABASE_URL && (cfg.SUPABASE_PUBLISHABLE_KEY || cfg.SUPABASE_ANON_KEY)) {
       const script = document.createElement('script');
       script.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';
-      script.onload = () => import('./app.js?v=hidden-forms-fix-1');
+      script.onload = () => import('./app.js?v=mobile-nav-safe-1');
       document.head.appendChild(script);
     } else {
-      import('./app.js?v=hidden-forms-fix-1');
+      import('./app.js?v=mobile-nav-safe-1');
     }
   </script>
 </body>

@@ -70,3 +70,16 @@ but are now forced to `display:none !important`.
 This removes the blank input boxes that were appearing below the Home screen.
 The AJAX submission code can still create `FormData` from forms that are not displayed,
 so Netlify capture and email notifications continue to work.
+
+
+## Mobile navigation safe-area fix
+
+The bottom KUDOS navigation now uses the phone's safe-area inset and additional mobile clearance.
+This prevents the navigation from sitting directly against iPhone/Android gesture bars or common
+browser overlays.
+
+Also disable Netlify's own `Powered by Netlify` badge in:
+Project configuration → General → Powered by Netlify badge.
+
+If testing a Deploy Preview or branch deploy, disable the Netlify Drawer under:
+Project configuration → Build & deploy → Continuous deployment → Collaboration tools.

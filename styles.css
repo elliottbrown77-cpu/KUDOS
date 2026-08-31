@@ -116,3 +116,39 @@ main{max-width:1120px;margin:0 auto;padding:18px 16px 40px}
 
 /* Static Netlify forms are detected at build time but must never affect the UI. */
 .netlify-static-form{display:none!important}
+
+
+/* Mobile bottom-navigation safe area.
+   Keeps the KUDOS dock clear of iOS/Android gesture bars and browser overlays. */
+.app-shell{
+  padding-bottom:calc(112px + env(safe-area-inset-bottom, 0px));
+}
+.bottom-nav{
+  bottom:calc(14px + env(safe-area-inset-bottom, 0px));
+}
+@media(max-width:800px){
+  main{
+    padding-bottom:72px;
+  }
+  .bottom-nav{
+    bottom:calc(16px + env(safe-area-inset-bottom, 0px));
+    width:calc(100% - 20px);
+  }
+}
+@media(max-width:480px){
+  .app-shell{
+    padding-bottom:calc(122px + env(safe-area-inset-bottom, 0px));
+  }
+  .bottom-nav{
+    bottom:calc(18px + env(safe-area-inset-bottom, 0px));
+    width:calc(100% - 16px);
+    padding:7px 5px;
+  }
+  .nav-btn{
+    min-width:0;
+    padding:7px 1px;
+  }
+  .nav-btn b{
+    font-size:16px;
+  }
+}

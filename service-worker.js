@@ -1,4 +1,4 @@
-const CACHE = 'kudos-v10-hidden-forms-layout-fix';
+const CACHE = 'kudos-v11-mobile-nav-safe';
 const STATIC_ASSETS = [
   './hero-merlin.png',
   './chf-crest.png',
