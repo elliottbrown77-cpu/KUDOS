@@ -1,0 +1,30 @@
+KUDOS — YOUR NEXT STEP
+
+You have already completed:
+1. Supabase account created.
+2. KUDOS Supabase project created.
+3. schema.sql pasted and run.
+4. Project URL and Publishable key connected to this copy of KUDOS.
+
+You do NOT need to edit any code.
+You do NOT need to run schema.sql again.
+
+NEXT: PUT THE APP ON A TEMPORARY WEB ADDRESS
+
+The simplest test route is Netlify Drop:
+1. Go to https://app.netlify.com/drop
+2. Sign in or create a free Netlify account if asked.
+3. Drag the ZIP file KUDOS_CONNECTED_READY_TO_PUBLISH.zip onto the page.
+4. Wait for it to finish publishing.
+5. Netlify will give you a web address ending in .netlify.app
+6. Open that address on your phone or computer.
+
+WHAT YOU SHOULD SEE
+The KUDOS app should open using the Supabase database rather than Demo Mode.
+Because the new database has no profiles yet, create one test profile in the app.
+Then create one test challenge from the Performance Rep/Admin area after we configure admin access, or we can add a test challenge directly in Supabase first.
+
+IMPORTANT
+Only the Supabase Publishable key is included in this app. No Secret or service_role key is included.
+
+When you have the temporary .netlify.app address, send it back to ChatGPT and we will test the app together before adding real data.
