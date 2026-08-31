@@ -193,20 +193,26 @@ where p.active=true;
 create or replace view public.profile_scores as
 with active_term as (
   select * from public.terms where active=true order by start_date desc limit 1
-), progress_pts as (
-  select pe.profile_id, coalesce(sum(pe.value),0)::numeric as points
+), progress_by_challenge as (
+  select pe.profile_id, pe.challenge_id, coalesce(sum(pe.value),0)::numeric as contribution
   from public.progress_entries pe
-  join public.challenges c on c.id=pe.challenge_id
+  join public.challenges c on c.id=pe.challenge_id and c.source_type='progress'
   join active_term t on pe.entry_date between t.start_date and t.end_date
-  group by pe.profile_id
+  group by pe.profile_id, pe.challenge_id
+), progress_pts as (
+  select pbc.profile_id,
+    coalesce(sum(case when c.target > 0 then (pbc.contribution / c.target) * 1000 else 0 end),0)::numeric as points
+  from progress_by_challenge pbc
+  join public.challenges c on c.id=pbc.challenge_id
+  group by pbc.profile_id
 ), rec_pts as (
-  select re.submitter_profile_id as profile_id, count(*)::numeric*10 as points
+  select re.submitter_profile_id as profile_id, count(*)::numeric*20 as points
   from public.recognition_entries re join active_term t on re.entry_date between t.start_date and t.end_date group by re.submitter_profile_id
 ), inn_pts as (
-  select ie.profile_id, count(*)::numeric*10 as points
+  select ie.profile_id, count(*)::numeric*20 as points
   from public.innovation_entries ie join active_term t on ie.entry_date between t.start_date and t.end_date group by ie.profile_id
 ), safe_pts as (
-  select se.profile_id, count(*)::numeric*10 as points
+  select se.profile_id, count(*)::numeric*20 as points
   from public.safety_entries se join active_term t on se.entry_date between t.start_date and t.end_date group by se.profile_id
 )
 select p.id as profile_id,p.name,p.team_id,

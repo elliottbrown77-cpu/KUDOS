@@ -1,46 +1,59 @@
-# KUDOS – Contribution and Email Build
+# KUDOS – Clean Contribution Email Build
 
-This version adds:
+This build fixes the contribution email layout.
 
-- Flight Safety, Recognition and Innovation buttons to the Home page.
-- Flight Safety is shown first and highlighted.
-- Flight Safety now requires a description of the issue.
-- Recognition now accepts a free-text nominated person. The nominee does not need a KUDOS profile.
-- Every Recognition, Innovation and Flight Safety submission records the selected KUDOS profile as the creator.
-- After saving to Supabase, the app also submits a Netlify form called `kudos-contribution`.
+Netlify now detects THREE separate forms:
 
-## One Netlify setting is still required for email
+- `kudos-safety`
+- `kudos-recognition`
+- `kudos-innovation`
 
-After this build has deployed:
+Each form contains only the fields relevant to that contribution type, plus the creator identity:
+- submitted by
+- profile code
+- profile ID
+- team
+- submission date
 
-1. Open the **chfkudos** project in Netlify.
-2. Open **Forms** and make sure **Form detection** is enabled.
-3. After the deploy, confirm you can see a form called **kudos-contribution**.
-4. Go to **Project configuration → Notifications → Emails and webhooks → Form submission notifications**.
-5. Add an **Email notification** for the `kudos-contribution` form.
-6. Set the destination email to:
+## Netlify email setup
 
-   **elliott.brown283@mod.gov.uk**
+Your old `kudos-contribution` form can be left in Netlify for historical submissions, but new KUDOS submissions no longer use it.
 
-After that, each Recognition, Innovation and Flight Safety entry submitted through KUDOS will be included in the Netlify email notification, including the creator's profile name, profile ID/code and team.
+In Netlify, add an email notification to `elliott.brown283@mod.gov.uk` for EACH of these three forms:
 
-## Flight Safety information
+1. `kudos-safety`
+2. `kudos-recognition`
+3. `kudos-innovation`
 
-The Safety form allows a description, but the app warns users not to enter classified, protectively marked or otherwise security-sensitive information. Netlify Forms stores form submissions as well as sending notifications, so this workflow should only be used for information approved for this hosting route.
+This means:
+- a Safety email contains only Safety fields
+- a Recognition email contains only Recognition fields
+- an Innovation email contains only Innovation fields
+
+## KUDOS score fix
+
+The Autumn 2026 term start date has been corrected in the live Supabase database to 31 August 2026.
+
+The existing test data now calculates as:
+- Challenge progress: 1000 points
+- Recognition: 10 points
+- Innovation: 10 points
+- Flight Safety: 10 points
+- Total KUDOS score: 1030 points
 
 
-## Admin moderation
+## Scoring rebalance
 
-Authenticated KUDOS users with the `admin` role now have an **Entry moderation** section in the Rep/Admin page.
+This build changes KUDOS scoring so challenge measures do not swamp the behaviour contributions.
 
-Admins can review and remove:
-- normal challenge progress entries
-- recognition entries
-- innovation entries
-- Flight Safety entries
+New scoring:
+- Challenge KUDOS: 1% of the team target contributed = 10 KUDOS, capped at 100 KUDOS per person per challenge
+- Recognition: 20 KUDOS each
+- Innovation: 20 KUDOS each
+- Flight Safety: 20 KUDOS each
 
-Removal immediately changes challenge totals, individual KUDOS scores and team scores.
+Example:
+- 1,000 kg logged against a 105,000 kg challenge = 9.52 KUDOS
+- 1 Recognition = 20 KUDOS
 
-Performance Representatives cannot delete entries.
-
-Important: deleting a KUDOS entry does not recall an email notification that has already been sent by Netlify and does not automatically remove a retained Netlify Forms submission.
+The live Supabase scoring migration has already been applied. Do not run SCORING_PATCH.sql.

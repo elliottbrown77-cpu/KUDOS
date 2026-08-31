@@ -1,4 +1,4 @@
-const CACHE = 'kudos-v5-admin-moderation';
+const CACHE = 'kudos-v8-scoring-final';
 const STATIC_ASSETS = [
   './hero-merlin.png',
   './chf-crest.png',

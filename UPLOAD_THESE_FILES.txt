@@ -1,9 +1,12 @@
-KUDOS ADMIN MODERATION BUILD
+KUDOS FINAL SCORING BUILD
 
-Upload ALL files in this folder to the ROOT of the existing GitHub repository and commit them.
+Upload ALL files in this folder to the ROOT of your GitHub repository and commit them.
 
-This build includes all earlier features plus:
-- Admin-only entry moderation
-- Review of recent Progress / Recognition / Innovation / Flight Safety entries
-- Remove button with confirmation
-- Immediate recalculation of scores and challenge totals
+Supabase has already been updated directly. No SQL action is required.
+
+Scoring:
+- 1% of a challenge target = 10 KUDOS
+- maximum 100 KUDOS per person per challenge
+- Recognition = 20 KUDOS
+- Innovation = 20 KUDOS
+- Flight Safety = 20 KUDOS

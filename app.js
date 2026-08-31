@@ -182,10 +182,15 @@ function personalContribution(profileId, challenge){
   if(challenge.source_type==='safety') return state.data.safety.filter(x=>x.profile_id===profileId).length;
   return 0;
 }
+function demoChallengeKudos(profileId){
+  return state.data.challenges
+    .filter(c=>c.active!==false && c.source_type==='progress' && Number(c.target||0)>0)
+    .reduce((sum,c)=>sum + Math.min((personalContribution(profileId,c) / Number(c.target)) * 1000, 100), 0);
+}
 function profileScore(profileId){
   if(state.mode==='supabase') return Number(state.data.profileScores.find(x=>x.profile_id===profileId)?.kudos_score||0);
-  const progress=state.data.progress.filter(x=>x.profile_id===profileId).reduce((a,x)=>a+Number(x.value||0),0);
-  const special=10*(state.data.recognition.filter(x=>x.submitter_profile_id===profileId).length+state.data.innovation.filter(x=>x.profile_id===profileId).length+state.data.safety.filter(x=>x.profile_id===profileId).length);
+  const progress=demoChallengeKudos(profileId);
+  const special=20*(state.data.recognition.filter(x=>x.submitter_profile_id===profileId).length+state.data.innovation.filter(x=>x.profile_id===profileId).length+state.data.safety.filter(x=>x.profile_id===profileId).length);
   return progress+special;
 }
 function scoreBreakdown(profileId){
@@ -193,10 +198,10 @@ function scoreBreakdown(profileId){
     const s=state.data.profileScores.find(x=>x.profile_id===profileId)||{};
     return {progress:Number(s.challenge_points||0),recognition:Number(s.recognition_points||0),innovation:Number(s.innovation_points||0),safety:Number(s.safety_points||0),total:Number(s.kudos_score||0)};
   }
-  const progress=state.data.progress.filter(x=>x.profile_id===profileId).reduce((a,x)=>a+Number(x.value||0),0);
-  const recognition=state.data.recognition.filter(x=>x.submitter_profile_id===profileId).length*10;
-  const innovation=state.data.innovation.filter(x=>x.profile_id===profileId).length*10;
-  const safety=state.data.safety.filter(x=>x.profile_id===profileId).length*10;
+  const progress=demoChallengeKudos(profileId);
+  const recognition=state.data.recognition.filter(x=>x.submitter_profile_id===profileId).length*20;
+  const innovation=state.data.innovation.filter(x=>x.profile_id===profileId).length*20;
+  const safety=state.data.safety.filter(x=>x.profile_id===profileId).length*20;
   return {progress,recognition,innovation,safety,total:progress+recognition+innovation+safety};
 }
 function teamScore(teamId){
@@ -239,7 +244,7 @@ function contributionQuickActions(home=false){
         <div class="eyebrow">FLIGHT SAFETY</div>
         <h3>Report a safety issue</h3>
         <p class="challenge-desc">Record a safety concern or good catch with a short description. The submission is attributed to your selected KUDOS profile.</p>
-        <div class="score-badge">1 safety contribution • +10 points</div>
+        <div class="score-badge">1 safety contribution • +20 KUDOS</div>
       </div>
       <button class="btn safety-btn" data-special="safety">Report safety issue</button>
     </div>
@@ -249,7 +254,7 @@ function contributionQuickActions(home=false){
         <div class="eyebrow">RECOGNITION</div>
         <h3>Recognise someone</h3>
         <p class="challenge-desc">Nominate anyone by name — they do not need to have a KUDOS profile.</p>
-        <div class="score-badge">1 recognition • +10 points</div>
+        <div class="score-badge">1 recognition • +20 KUDOS</div>
       </div>
       <button class="btn primary" data-special="recognition">Submit recognition</button>
     </div>
@@ -259,7 +264,7 @@ function contributionQuickActions(home=false){
         <div class="eyebrow">INNOVATION</div>
         <h3>Submit an idea</h3>
         <p class="challenge-desc">Suggest something that makes the team safer, simpler or more effective.</p>
-        <div class="score-badge">1 idea • +10 points</div>
+        <div class="score-badge">1 idea • +20 KUDOS</div>
       </div>
       <button class="btn primary" data-special="innovation">Submit innovation</button>
     </div>
@@ -268,13 +273,14 @@ function contributionQuickActions(home=false){
 
 function homeView(){
   const p=currentProfile(), team=p?.team_id || state.teamFilter, challenges=activeTeamChallenges(team), avg=teamAverage(team), cov=psfCoverage(team);
-  return `<section class="hero"><div><div class="gold" style="font-weight:900;letter-spacing:.12em">KUDOS</div><h1>CHF HUMAN<br><span class="gold">PERFORMANCE</span></h1><p>Team challenges built around the factors that shape performance. Small actions. Better performance.</p><span class="strap">READY TO LEAD • READY TO FIGHT • READY TO WIN</span></div></section>
+  return `<section class="hero"><div><div class="gold" style="font-weight:900;letter-spacing:.12em">KUDOS</div><h1>CHF HUMAN<br><span class="gold">PERFORMANCE</span></h1><p>Team challenges built around the factors that shape performance. Small actions. Better performance. Challenge progress tracks the real measure, while KUDOS points reward the value of the contribution.</p><span class="strap">READY TO LEAD • READY TO FIGHT • READY TO WIN</span></div></section>
   <div class="section-title"><h2>${esc(teamName(team))} overview</h2><p>${state.mode==='demo'?'Demo mode – ready for Supabase':'Live shared data'}</p></div>
-  <div class="grid four"><div class="card metric"><div class="label">My KUDOS score</div><div class="value">${fmt(profileScore(p?.id))}</div><div class="sub">Challenge activity + 10 point contributions</div></div>
+  <div class="grid four"><div class="card metric"><div class="label">My KUDOS score</div><div class="value">${fmt(profileScore(p?.id))}</div><div class="sub">Challenge score from % of target + 20 KUDOS contributions</div></div>
   <div class="card metric"><div class="label">Team KUDOS score</div><div class="value">${fmt(teamScore(team))}</div><div class="sub">Combined individual contribution</div></div>
   <div class="card metric"><div class="label">Challenge completion</div><div class="value">${pct(avg)}</div><div class="sub">Average capped at 100% per challenge</div></div>
   <div class="card metric"><div class="label">PSF coverage</div><div class="value">${cov.count}/9</div><div class="sub">Across the current challenge portfolio</div></div></div>
   <div class="section-title contribution-title"><h2>Make a contribution</h2><p>Safety • Recognition • Innovation</p></div>
+  <div class="card scoring-explainer"><strong>How KUDOS scoring works</strong><div class="help">Challenge progress still tracks the real measure, such as kg or km. Your KUDOS score comes from the share of the team target you contribute: <strong>1% of target = 10 KUDOS</strong>, up to a maximum of <strong>100 KUDOS per person per challenge</strong>. Each <strong>Recognition</strong>, <strong>Innovation</strong> and <strong>Flight Safety</strong> submission is worth <strong>20 KUDOS</strong>.</div></div>
   ${contributionQuickActions(true)}
   <div class="section-title"><h2>Current challenges</h2><p>${challenges.length} active</p></div><div class="grid two">${challenges.slice(0,6).map(c=>progressCard(c)).join('')||'<div class="empty">No active challenges for this team.</div>'}</div>${crests()}`;
 }
@@ -500,7 +506,7 @@ function reportsView(){
 
 function contributeView(){
   return `<div class="section-title"><h2>Contribute</h2><p>Safety, recognition and innovation</p></div>${contributionQuickActions(false)}
-  <div class="notice" style="margin-top:14px">Every submission records the selected KUDOS profile as the creator and is also sent through the site notification form for administrator email notification.</div>`;
+  <div class="notice" style="margin-top:14px">Every submission records the selected KUDOS profile as the creator and is also sent through the site notification form for administrator email notification. Recognition, Innovation and Flight Safety are each worth 20 KUDOS.</div>`;
 }
 
 
@@ -591,14 +597,14 @@ function specialModal(type){
       <div class="field"><label>Who are you nominating?</label><input name="nominated_person" required maxlength="160" placeholder="Enter their name"></div>
       <div class="help" style="margin-top:-8px;margin-bottom:12px">They do not need to be registered in KUDOS.</div>
       <div class="field"><label>Why are you recognising them?</label><textarea name="reason" required maxlength="3000" placeholder="Describe what they did and why it deserves recognition"></textarea></div>
-      <button class="btn primary" type="submit">Submit recognition (+10 points)</button>
+      <button class="btn primary" type="submit">Submit recognition (+20 KUDOS)</button>
     </form></div></div>`;
   if(type==='innovation') return `<div class="modal-backdrop" id="modal"><div class="modal"><h2>Submit an innovation</h2>
     <div class="creator-strip"><strong>Submitted by:</strong> ${creator}</div>
     <form id="specialForm" data-type="innovation">
       <div class="field"><label>Title</label><input name="title" required maxlength="180" placeholder="Short, clear idea"></div>
       <div class="field"><label>Description</label><textarea name="description" required maxlength="4000" placeholder="What could be better and what do you suggest?"></textarea></div>
-      <button class="btn primary" type="submit">Submit idea (+10 points)</button>
+      <button class="btn primary" type="submit">Submit idea (+20 KUDOS)</button>
     </form></div></div>`;
   return `<div class="modal-backdrop" id="modal"><div class="modal safety-modal"><h2>Report a Flight Safety issue</h2>
     <div class="creator-strip"><strong>Submitted by:</strong> ${creator}</div>
@@ -607,7 +613,7 @@ function specialModal(type){
       <div class="field" style="margin-top:14px"><label>Category</label><input name="category" required maxlength="160" placeholder="e.g. Hazard / good catch / equipment / process"></div>
       <div class="field"><label>Description of the issue</label><textarea name="description" required maxlength="4000" placeholder="Briefly describe what you observed, why it matters and any immediate action taken"></textarea></div>
       <div class="field"><label>External reference <span class="help">optional</span></label><input name="external_reference" maxlength="200" placeholder="Reference from an authorised reporting system, if available"></div>
-      <button class="btn safety-btn" type="submit">Submit Flight Safety report (+10 points)</button>
+      <button class="btn safety-btn" type="submit">Submit Flight Safety report (+20 KUDOS)</button>
     </form></div></div>`;
 }
 
@@ -666,20 +672,39 @@ async function submitProgress(fd){
 
 async function sendContributionNotification(type,fd,p){
   const payload=new URLSearchParams();
-  payload.set('form-name','kudos-contribution');
-  payload.set('report_type', type==='safety'?'Flight Safety':type==='recognition'?'Recognition':'Innovation');
-  payload.set('submitted_by', p?.name||'Unknown profile');
-  payload.set('submitter_profile_code', p?.profile_code||'');
-  payload.set('submitter_profile_id', p?.id||'');
-  payload.set('submitter_team', teamName(p?.team_id));
-  payload.set('submission_date', today());
-  payload.set('site_url', window.location.href);
-  payload.set('nominated_person', String(fd.get('nominated_person')||''));
-  payload.set('reason', String(fd.get('reason')||''));
-  payload.set('innovation_title', String(fd.get('title')||''));
-  payload.set('description', String(fd.get('description')||''));
-  payload.set('safety_category', String(fd.get('category')||''));
-  payload.set('external_reference', String(fd.get('external_reference')||''));
+
+  const common={
+    submitted_by:p?.name||'Unknown profile',
+    submitter_profile_code:p?.profile_code||'',
+    submitter_profile_id:p?.id||'',
+    submitter_team:teamName(p?.team_id),
+    submission_date:today(),
+    site_url:window.location.href
+  };
+
+  Object.entries(common).forEach(([k,v])=>payload.set(k,String(v??'')));
+
+  let formName='';
+  if(type==='safety'){
+    formName='kudos-safety';
+    payload.set('form-name',formName);
+    payload.set('category',String(fd.get('category')||''));
+    payload.set('description',String(fd.get('description')||''));
+    payload.set('external_reference',String(fd.get('external_reference')||''));
+  }
+  if(type==='recognition'){
+    formName='kudos-recognition';
+    payload.set('form-name',formName);
+    payload.set('nominated_person',String(fd.get('nominated_person')||''));
+    payload.set('reason',String(fd.get('reason')||''));
+  }
+  if(type==='innovation'){
+    formName='kudos-innovation';
+    payload.set('form-name',formName);
+    payload.set('title',String(fd.get('title')||''));
+    payload.set('description',String(fd.get('description')||''));
+  }
+
   const response=await fetch('/',{
     method:'POST',
     headers:{'Content-Type':'application/x-www-form-urlencoded'},
@@ -699,7 +724,7 @@ async function submitSpecial(type,fd){
     saveDemo();
     try{
       await sendContributionNotification(type,fd,p);
-      state.notice='Saved. This contribution is worth 10 KUDOS points and the notification was submitted for email delivery.';
+      state.notice='Saved. This contribution is worth 20 KUDOS points and the notification was submitted for email delivery.';
     }catch(err){
       console.error(err);
       state.notice='Saved in KUDOS, but the email notification could not be submitted. Please tell a KUDOS administrator.';
@@ -738,7 +763,7 @@ async function submitSpecial(type,fd){
   }
 
   state.notice=emailSubmitted
-    ? 'Saved. This contribution is worth 10 KUDOS points and the notification was submitted for email delivery.'
+    ? 'Saved. This contribution is worth 20 KUDOS points and the notification was submitted for email delivery.'
     : 'Saved in KUDOS, but the email notification could not be submitted. Please tell a KUDOS administrator.';
   await refresh();
 }

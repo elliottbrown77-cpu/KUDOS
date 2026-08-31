@@ -110,3 +110,6 @@ main{max-width:1120px;margin:0 auto;padding:18px 16px 40px}
 .btn.danger{background:#b42025;color:#fff;border:none}
 .btn.danger:hover{filter:brightness(.94)}
 .btn.compact{padding:8px 10px;font-size:11px}
+
+.scoring-explainer{margin-bottom:16px;border-left:5px solid var(--sand)}
+.scoring-explainer strong{color:var(--navy)}
