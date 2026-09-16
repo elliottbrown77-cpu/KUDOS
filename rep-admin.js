@@ -1,4 +1,4 @@
-const KUDOS_REP_TOOLS_VERSION = '2026-09-16.3';
+const KUDOS_REP_TOOLS_VERSION = '2026-09-16.4';
 
 const CFG = window.KUDOS_CONFIG || {};
 const SUPABASE_KEY = CFG.SUPABASE_PUBLISHABLE_KEY || CFG.SUPABASE_ANON_KEY || '';
@@ -42,6 +42,89 @@ if (!READY) {
 
     if (error) throw error;
     return { user, appUser: appUser || null };
+  }
+
+
+  async function getSelectedProfileContext() {
+    const profileId = localStorage.getItem('kudos_profile') || '';
+    if (!profileId) return null;
+    const { data, error } = await db
+      .from('profiles')
+      .select('id,name,team_id,active')
+      .eq('id', profileId)
+      .maybeSingle();
+    if (error) throw error;
+    return data || null;
+  }
+
+  function getActingMode(ctx) {
+    const stored = localStorage.getItem('kudos_acting_mode') || '';
+    if (ctx.appUser?.role === 'admin') {
+      return ['individual','rep','admin'].includes(stored) ? stored : 'admin';
+    }
+    if (ctx.appUser?.role === 'rep') {
+      return stored === 'individual' ? 'individual' : 'rep';
+    }
+    return 'individual';
+  }
+
+  function resolvedRepTeamId(ctx, profile, teams) {
+    const candidate = ctx.appUser?.team_id || profile?.team_id || '';
+    return teams.some(t => t.id === candidate) ? candidate : '';
+  }
+
+  function hideCoreRepPage(main) {
+    [...main.children].forEach(el => {
+      if (el.id === 'kudos-rep-tools') return;
+      el.style.display = 'none';
+      el.setAttribute('data-kudos-core-rep-hidden', 'true');
+    });
+  }
+
+  function modeLabel(mode) {
+    if (mode === 'admin') return 'Administrator';
+    if (mode === 'rep') return 'Performance Rep';
+    return 'Individual';
+  }
+
+  function actingModeBar(ctx, profile, teams, mode, repTeamId) {
+    const repTeam = teams.find(t => t.id === repTeamId);
+    const buttons = [
+      `<button class="btn ${mode==='individual'?'primary':'ghost'} acting-mode-btn" data-kudos-acting-mode="individual">Individual</button>`,
+      `<button class="btn ${mode==='rep'?'primary':'ghost'} acting-mode-btn" data-kudos-acting-mode="rep" ${repTeamId?'':'disabled'}>Rep</button>`,
+      ctx.appUser?.role === 'admin'
+        ? `<button class="btn ${mode==='admin'?'primary':'ghost'} acting-mode-btn" data-kudos-acting-mode="admin">Admin</button>`
+        : ''
+    ].join('');
+
+    let context = '';
+    if (mode === 'individual') {
+      context = profile
+        ? `Normal KUDOS member view • ${esc(profile.name)} • ${esc(teams.find(t=>t.id===profile.team_id)?.name || 'Team')}`
+        : 'Normal KUDOS member view • choose an individual profile from the profile button.';
+    } else if (mode === 'rep') {
+      context = repTeam
+        ? `Team-scoped Rep context • ${esc(repTeam.name)}`
+        : 'No Rep team is assigned. An Admin can set the Rep team in Access accounts.';
+    } else {
+      context = 'Global Administrator context • not tied to your individual profile or team.';
+    }
+
+    return `
+      <div class="card acting-shell">
+        <div class="acting-head">
+          <div>
+            <h2 style="margin:0">Acting as: ${esc(modeLabel(mode))}</h2>
+            <div class="acting-modes">${buttons}</div>
+            <div class="acting-context">${context}</div>
+          </div>
+          <div class="mode-actions">
+            ${mode!=='individual' ? `<button class="btn navy" data-kudos-create-challenge>Create challenge</button>` : ''}
+            <button class="btn ghost" data-kudos-signout>Sign out</button>
+          </div>
+        </div>
+      </div>
+    `;
   }
 
   async function getTeams() {
@@ -182,6 +265,13 @@ if (!READY) {
       #kudos-rep-tools .access-current-user{font-size:.74rem;font-weight:800;letter-spacing:.05em;text-transform:uppercase;opacity:.65}
       #kudos-rep-tools .access-audit{font-size:.88rem}
       #kudos-rep-tools .magic-link-card{margin-top:14px}
+      #kudos-rep-tools .acting-shell{margin-bottom:18px}
+      #kudos-rep-tools .acting-head{display:flex;gap:14px;justify-content:space-between;align-items:flex-start;flex-wrap:wrap}
+      #kudos-rep-tools .acting-modes{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+      #kudos-rep-tools .acting-mode-btn{min-width:110px}
+      #kudos-rep-tools .acting-context{margin-top:10px;font-size:.9rem;opacity:.78}
+      #kudos-rep-tools .admin-global-badge{display:inline-block;padding:5px 9px;border-radius:999px;background:rgba(12,35,56,.08);font-weight:800;font-size:.78rem;letter-spacing:.04em}
+      #kudos-rep-tools .mode-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
       @media(max-width:900px){
         #kudos-rep-tools .admin-access-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
         #kudos-rep-tools .admin-invite-form{grid-template-columns:1fr 1fr}
@@ -484,7 +574,7 @@ if (!READY) {
             <option value="admin" ${role==='admin'?'selected':''}>Admin</option>
           </select>
         </td>
-        <td>${teamSelectHtml(teams, teamId, role!=='rep', `data-access-team="${esc(d.auth_user_id)}"`)}</td>
+        <td>${teamSelectHtml(teams, teamId, !role, `data-access-team="${esc(d.auth_user_id)}"`)}</td>
         <td>
           <div class="access-row-actions">
             <button class="btn primary compact" data-access-save="${esc(d.auth_user_id)}">${a?'Save':'Grant'}</button>
@@ -499,7 +589,7 @@ if (!READY) {
       <tr>
         <td><strong>${esc(p.email)}</strong></td>
         <td>${esc(String(p.role||'').toUpperCase())}</td>
-        <td>${esc(p.team_id ? (teamMap[p.team_id] || 'Team') : 'All / Admin')}</td>
+        <td>${esc(p.team_id ? (teamMap[p.team_id] || 'Team') : '—')}</td>
         <td>${esc(dt(p.invited_at))}</td>
         <td><button class="btn danger compact rep-tool-danger" data-pending-cancel="${esc(p.email)}">Cancel</button></td>
       </tr>
@@ -534,7 +624,7 @@ if (!READY) {
         <form id="kudos-access-invite-form" class="admin-invite-form" style="margin-top:14px">
           <div class="field"><label>Email</label><input name="email" type="email" required placeholder="name@example.com"></div>
           <div class="field"><label>Role</label><select name="role" id="kudos-invite-role"><option value="rep">Rep</option><option value="admin">Admin</option></select></div>
-          <div class="field"><label>Team</label>${teamSelectHtml(teams,'',false,'name="team_id" id="kudos-invite-team"')}</div>
+          <div class="field"><label>Rep team <span class="help">(optional for Admin)</span></label>${teamSelectHtml(teams,'',false,'name="team_id" id="kudos-invite-team"')}</div>
           <button class="btn navy" type="submit">Send invite</button>
         </form>
         <div id="kudos-access-status" class="rep-tool-status"></div>
@@ -545,7 +635,7 @@ if (!READY) {
         <div class="notice">Revoking access removes the KUDOS role but does not delete the person's authentication account. At least one KUDOS administrator is always retained by the database.</div>
         <div class="table-wrap" style="margin-top:12px">
           <table class="rep-tool-table">
-            <thead><tr><th>Email</th><th>Last sign-in</th><th>Role</th><th>Team</th><th></th></tr></thead>
+            <thead><tr><th>Email</th><th>Last sign-in</th><th>Role</th><th>Rep team</th><th></th></tr></thead>
             <tbody>${directoryRows || '<tr><td colspan="5"><div class="empty compact-empty">No access accounts found.</div></td></tr>'}</tbody>
           </table>
         </div>
@@ -555,7 +645,7 @@ if (!READY) {
       <div class="card rep-tool-card">
         <div class="table-wrap">
           <table class="rep-tool-table">
-            <thead><tr><th>Email</th><th>Role</th><th>Team</th><th>Invited</th><th></th></tr></thead>
+            <thead><tr><th>Email</th><th>Role</th><th>Rep team</th><th>Invited</th><th></th></tr></thead>
             <tbody>${pendingRows || '<tr><td colspan="5"><div class="empty compact-empty">No pending access invitations.</div></td></tr>'}</tbody>
           </table>
         </div>
@@ -601,12 +691,12 @@ if (!READY) {
 
   async function saveAccessRecord(userId, role, teamId) {
     if (!['rep','admin'].includes(role)) throw new Error('Choose Rep or Admin.');
+    if (role === 'rep' && !teamId) throw new Error('Choose a Rep team.');
     const record = {
       auth_user_id: userId,
       role,
-      team_id: role === 'rep' ? teamId : null
+      team_id: teamId || null
     };
-    if (role === 'rep' && !teamId) throw new Error('Choose a team for a Rep.');
     const {error} = await db.from('app_users').upsert(record, {onConflict:'auth_user_id'});
     if (error) throw error;
   }
@@ -635,7 +725,7 @@ if (!READY) {
     const pending = {
       email,
       role,
-      team_id: role === 'rep' ? teamId : null,
+      team_id: teamId || null,
       invited_by: ctx.user.id
     };
 
@@ -669,9 +759,7 @@ if (!READY) {
     const inviteTeam = document.getElementById('kudos-invite-team');
     const syncInviteTeam = () => {
       if (!inviteRole || !inviteTeam) return;
-      const rep = inviteRole.value === 'rep';
-      inviteTeam.disabled = !rep;
-      if (!rep) inviteTeam.value = '';
+      inviteTeam.disabled = false;
     };
     inviteRole?.addEventListener('change', syncInviteTeam);
     syncInviteTeam();
@@ -681,9 +769,9 @@ if (!READY) {
       const teamSel = root.querySelector(`[data-access-team="${CSS.escape(userId)}"]`);
       const sync = () => {
         if (!teamSel) return;
-        const rep = sel.value === 'rep';
-        teamSel.disabled = !rep;
-        if (!rep) teamSel.value = '';
+        const hasAccess = ['rep','admin'].includes(sel.value);
+        teamSel.disabled = !hasAccess;
+        if (!hasAccess) teamSel.value = '';
       };
       sel.addEventListener('change', sync);
       sync();
@@ -806,91 +894,136 @@ if (!READY) {
   }
 
 
-  async function renderTools(main, ctx, teams, teamId) {
+  async function renderTools(main, ctx, teams, teamId, mode, profile, repTeamId) {
     const existing = document.getElementById('kudos-rep-tools');
     if (existing) existing.remove();
 
-    const data = await loadTeamData(teamId);
-    const adminData = ctx.appUser?.role === 'admin' ? await loadAccessAdminData() : null;
-    const selectedTeam = teams.find(t => t.id === teamId);
-    const existingAdminModeration = !!main.querySelector('.moderation-table');
+    hideCoreRepPage(main);
 
     const root = document.createElement('section');
     root.id = 'kudos-rep-tools';
-    root.innerHTML = `
-      <div class="section-title rep-tools-head">
-        <div>
-          <h2>Rep controls</h2>
-          <p>${esc(selectedTeam?.name || 'Team')} • ${esc(String(ctx.appUser.role || '').toUpperCase())}</p>
+
+    if (mode === 'individual') {
+      root.innerHTML = `
+        ${actingModeBar(ctx, profile, teams, mode, repTeamId)}
+        <div class="card">
+          <h3 style="margin-top:0">Individual mode</h3>
+          <p class="challenge-desc">Elevated Rep and Admin controls are hidden. KUDOS now behaves as your normal team-member profile.</p>
+          <button class="btn primary" data-kudos-go-home>Go to My KUDOS</button>
         </div>
-        ${ctx.appUser.role === 'admin' ? `
-          <div class="field">
-            <label>Manage team</label>
-            <select id="kudos-rep-tools-team">
-              ${teams.map(t => `<option value="${esc(t.id)}" ${t.id === teamId ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}
-            </select>
-          </div>` : ''}
-      </div>
-      ${renderChallengeSection(data, ctx.appUser?.role === 'admin')}
-      ${renderEntrySection(data, existingAdminModeration)}
-      ${renderPointsSection(data)}
-      ${adminData ? renderAccessAdminSection(ctx, teams, adminData) : ''}
-    `;
-    main.appendChild(root);
+      `;
+      main.appendChild(root);
+    } else {
+      if (!teamId) {
+        root.innerHTML = `
+          ${actingModeBar(ctx, profile, teams, mode, repTeamId)}
+          <div class="notice">A Rep team is required for Rep mode. Switch to Admin mode and assign a Rep team to this account, or select an individual profile attached to a team.</div>
+        `;
+        main.appendChild(root);
+      } else {
+        const data = await loadTeamData(teamId);
+        const adminData = mode === 'admin' && ctx.appUser?.role === 'admin' ? await loadAccessAdminData() : null;
+        const selectedTeam = teams.find(t => t.id === teamId);
 
-    document.getElementById('kudos-rep-tools-team')?.addEventListener('change', e => {
-      localStorage.setItem('kudos_rep_tools_team', e.target.value);
-      document.getElementById('kudos-rep-tools')?.remove();
-      schedule();
-    });
+        root.innerHTML = `
+          ${actingModeBar(ctx, profile, teams, mode, repTeamId)}
+          <div class="section-title rep-tools-head">
+            <div>
+              <h2>${mode === 'admin' ? 'Administrator controls' : 'Performance Rep controls'}</h2>
+              <p>${mode === 'admin'
+                ? `<span class="admin-global-badge">GLOBAL ADMIN</span> • selected management view: ${esc(selectedTeam?.name || 'Team')}`
+                : `${esc(selectedTeam?.name || 'Team')} • team-scoped`}</p>
+            </div>
+            ${mode === 'admin' ? `
+              <div class="field">
+                <label>View / manage team</label>
+                <select id="kudos-rep-tools-team">
+                  ${teams.map(t => `<option value="${esc(t.id)}" ${t.id === teamId ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}
+                </select>
+              </div>` : ''}
+          </div>
+          ${renderChallengeSection(data, mode === 'admin')}
+          ${renderEntrySection(data, false)}
+          ${renderPointsSection(data)}
+          ${adminData ? renderAccessAdminSection(ctx, teams, adminData) : ''}
+        `;
+        main.appendChild(root);
 
-    root.querySelectorAll('[data-rep-remove-challenge]').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        try {
-          btn.disabled = true;
-          await removeChallenge(btn.dataset.repRemoveChallenge, btn.dataset.title || 'challenge');
-        } catch (err) {
-          btn.disabled = false;
-          setStatus(`Could not remove challenge: ${err.message || err}`, true);
-        }
-      });
-    });
+        document.getElementById('kudos-rep-tools-team')?.addEventListener('change', e => {
+          localStorage.setItem('kudos_rep_tools_team', e.target.value);
+          document.getElementById('kudos-rep-tools')?.remove();
+          schedule();
+        });
 
-    root.querySelectorAll('[data-admin-remove-challenge-group]').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        try {
-          btn.disabled = true;
-          await removeChallengeGroup(btn.dataset.adminRemoveChallengeGroup, btn.dataset.title || 'challenge');
-        } catch (err) {
-          btn.disabled = false;
-          setStatus(`Could not remove challenge from all teams: ${err.message || err}`, true);
-        }
-      });
-    });
+        root.querySelectorAll('[data-rep-remove-challenge]').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            try {
+              btn.disabled = true;
+              await removeChallenge(btn.dataset.repRemoveChallenge, btn.dataset.title || 'challenge');
+            } catch (err) {
+              btn.disabled = false;
+              setStatus(`Could not remove challenge: ${err.message || err}`, true);
+            }
+          });
+        });
 
-    root.querySelectorAll('[data-rep-delete-entry]').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        try {
-          btn.disabled = true;
-          await deleteEntry(btn.dataset.entryType, btn.dataset.repDeleteEntry);
-        } catch (err) {
-          btn.disabled = false;
-          setStatus(`Could not remove entry: ${err.message || err}`, true);
-        }
-      });
-    });
+        root.querySelectorAll('[data-admin-remove-challenge-group]').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            try {
+              btn.disabled = true;
+              await removeChallengeGroup(btn.dataset.adminRemoveChallengeGroup, btn.dataset.title || 'challenge');
+            } catch (err) {
+              btn.disabled = false;
+              setStatus(`Could not remove challenge from all teams: ${err.message || err}`, true);
+            }
+          });
+        });
 
-    document.getElementById('kudos-point-adjustment-form')?.addEventListener('submit', async e => {
-      e.preventDefault();
-      const button = e.target.querySelector('button[type="submit"]');
-      try {
-        if (button) button.disabled = true;
-        setStatus('Saving deduction…');
-        await submitPointAdjustment(e.target, ctx, teamId, data);
-      } catch (err) {
-        if (button) button.disabled = false;
-        setStatus(`Could not remove points: ${err.message || err}`, true);
+        root.querySelectorAll('[data-rep-delete-entry]').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            try {
+              btn.disabled = true;
+              await deleteEntry(btn.dataset.entryType, btn.dataset.repDeleteEntry);
+            } catch (err) {
+              btn.disabled = false;
+              setStatus(`Could not remove entry: ${err.message || err}`, true);
+            }
+          });
+        });
+
+        document.getElementById('kudos-point-adjustment-form')?.addEventListener('submit', async e => {
+          e.preventDefault();
+          const button = e.target.querySelector('button[type="submit"]');
+          try {
+            if (button) button.disabled = true;
+            setStatus('Saving deduction…');
+            await submitPointAdjustment(e.target, ctx, teamId, data);
+          } catch (err) {
+            if (button) button.disabled = false;
+            setStatus(`Could not remove points: ${err.message || err}`, true);
+          }
+        });
+
+        if (adminData) bindAccessAdmin(ctx, teams, adminData, root);
       }
+    }
+
+    root.querySelectorAll('[data-kudos-acting-mode]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        localStorage.setItem('kudos_acting_mode', btn.dataset.kudosActingMode);
+        document.getElementById('kudos-rep-tools')?.remove();
+        schedule();
+      });
+    });
+
+    root.querySelector('[data-kudos-go-home]')?.addEventListener('click', () => {
+      document.querySelector('[data-view="home"]')?.click();
+    });
+
+    root.querySelector('[data-kudos-signout]')?.addEventListener('click', async () => {
+      await db.auth.signOut();
+      localStorage.removeItem('kudos_acting_mode');
+      window.location.reload();
     });
   }
 
@@ -910,20 +1043,26 @@ if (!READY) {
       }
       if (!ctx.appUser || !['rep', 'admin'].includes(ctx.appUser.role)) return;
 
-      const teams = await getTeams();
-      let teamId = ctx.appUser.role === 'rep'
-        ? ctx.appUser.team_id
-        : (localStorage.getItem('kudos_rep_tools_team') || teams[0]?.id || '');
+      const [teams, profile] = await Promise.all([getTeams(), getSelectedProfileContext()]);
+      const mode = getActingMode(ctx);
+      const repTeamId = resolvedRepTeamId(ctx, profile, teams);
 
-      if (!teams.some(t => t.id === teamId)) teamId = teams[0]?.id || '';
-      if (!teamId) return;
+      let teamId = '';
+      if (mode === 'rep') {
+        teamId = repTeamId;
+      } else if (mode === 'admin') {
+        teamId = localStorage.getItem('kudos_rep_tools_team') || teams[0]?.id || '';
+        if (!teams.some(t => t.id === teamId)) teamId = teams[0]?.id || '';
+      } else {
+        teamId = profile?.team_id || '';
+      }
 
-      await renderTools(main, ctx, teams, teamId);
+      await renderTools(main, ctx, teams, teamId, mode, profile, repTeamId);
     } catch (err) {
       console.error('KUDOS Rep Tools', err);
       const root = document.getElementById('kudos-rep-tools') || document.createElement('section');
       root.id = 'kudos-rep-tools';
-      root.innerHTML = `<div class="notice">Rep controls could not be loaded: ${esc(err.message || err)}</div>`;
+      root.innerHTML = `<div class="notice">Rep/Admin controls could not be loaded: ${esc(err.message || err)}</div>`;
       if (!root.parentNode && main) main.appendChild(root);
     } finally {
       running = false;
