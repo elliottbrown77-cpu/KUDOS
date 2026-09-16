@@ -1,4 +1,4 @@
-const KUDOS_REP_TOOLS_VERSION = '2026-09-16.2';
+const KUDOS_REP_TOOLS_VERSION = '2026-09-16.3';
 
 const CFG = window.KUDOS_CONFIG || {};
 const SUPABASE_KEY = CFG.SUPABASE_PUBLISHABLE_KEY || CFG.SUPABASE_ANON_KEY || '';
@@ -196,19 +196,26 @@ if (!READY) {
     document.head.appendChild(style);
   }
 
-  function renderChallengeSection(data) {
+  function renderChallengeSection(data, isFullAdmin=false) {
     const rows = data.challenges.map(c => `
       <tr>
         <td><strong>${esc(c.title)}</strong><div class="help">${esc(c.source_type)} • ${esc(c.start_date)} to ${esc(c.end_date)}</div></td>
         <td>${fmt(c.target)} ${esc(c.unit)}</td>
-        <td class="num"><button class="btn danger compact rep-tool-danger" data-rep-remove-challenge="${esc(c.id)}" data-title="${esc(c.title)}">Remove from team</button></td>
+        <td class="num">
+          <div class="rep-tool-actions" style="justify-content:flex-end">
+            <button class="btn danger compact rep-tool-danger" data-rep-remove-challenge="${esc(c.id)}" data-title="${esc(c.title)}">Remove from this team</button>
+            ${isFullAdmin && c.challenge_group_id ? `<button class="btn danger compact rep-tool-danger" data-admin-remove-challenge-group="${esc(c.challenge_group_id)}" data-title="${esc(c.title)}">Remove from all teams</button>` : ''}
+          </div>
+        </td>
       </tr>
     `).join('');
 
     return `
       <div class="section-title"><h2>Challenge management</h2><p>Rep/Admin controls • soft removal keeps historic entries</p></div>
       <div class="card rep-tool-card">
-        <div class="notice">Removing a challenge sets it inactive for this team. Its previous entries are retained for audit/history, but the challenge and its challenge-derived KUDOS no longer count in active reporting.</div>
+        <div class="notice">${isFullAdmin
+          ? 'Remove from this team affects only the selected team. Remove from all teams deactivates every active copy in the same shared challenge group. Historic entries are retained, but removed challenges stop counting in active progress, scoring and reports.'
+          : 'Removing a challenge sets it inactive for your team. Historic entries are retained for audit/history, but the challenge and its challenge-derived KUDOS no longer count in active reporting.'}</div>
         <div class="table-wrap" style="margin-top:12px">
           <table class="rep-tool-table">
             <thead><tr><th>Challenge</th><th>Target</th><th></th></tr></thead>
@@ -318,6 +325,40 @@ if (!READY) {
 
     if (error) throw error;
     if (!data?.length) throw new Error('No challenge was changed. Check that you have permission for this team.');
+    window.location.reload();
+  }
+
+  async function removeChallengeGroup(groupId, title) {
+    const ctx = await getContext();
+    if (ctx.appUser?.role !== 'admin') throw new Error('Administrator permission is required.');
+
+    const { count, error: countError } = await db
+      .from('challenges')
+      .select('id', { count: 'exact', head: true })
+      .eq('challenge_group_id', groupId)
+      .eq('active', true);
+
+    if (countError) throw countError;
+
+    const copies = Number(count || 0);
+    if (!copies) throw new Error('No active copies of this challenge were found.');
+
+    const ok = window.confirm(
+      `Remove "${title}" from all teams where it is active?\n\n` +
+      `${copies} challenge cop${copies === 1 ? 'y' : 'ies'} will be deactivated.\n\n` +
+      `Historic entries will be retained, but the challenge will stop counting in active progress, scoring and reports.`
+    );
+    if (!ok) return;
+
+    const { data, error } = await db
+      .from('challenges')
+      .update({ active: false })
+      .eq('challenge_group_id', groupId)
+      .eq('active', true)
+      .select('id,team_id');
+
+    if (error) throw error;
+    if (!data?.length) throw new Error('No challenge copies were changed.');
     window.location.reload();
   }
 
@@ -790,7 +831,7 @@ if (!READY) {
             </select>
           </div>` : ''}
       </div>
-      ${renderChallengeSection(data)}
+      ${renderChallengeSection(data, ctx.appUser?.role === 'admin')}
       ${renderEntrySection(data, existingAdminModeration)}
       ${renderPointsSection(data)}
       ${adminData ? renderAccessAdminSection(ctx, teams, adminData) : ''}
@@ -811,6 +852,18 @@ if (!READY) {
         } catch (err) {
           btn.disabled = false;
           setStatus(`Could not remove challenge: ${err.message || err}`, true);
+        }
+      });
+    });
+
+    root.querySelectorAll('[data-admin-remove-challenge-group]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        try {
+          btn.disabled = true;
+          await removeChallengeGroup(btn.dataset.adminRemoveChallengeGroup, btn.dataset.title || 'challenge');
+        } catch (err) {
+          btn.disabled = false;
+          setStatus(`Could not remove challenge from all teams: ${err.message || err}`, true);
         }
       });
     });

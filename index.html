@@ -77,7 +77,8 @@
 
     async function loadKudosApp() {
       await import('./app.js?v=rep-admin-2');
-      await import('./rep-admin.js?v=rep-admin-2');
+      await import('./challenge-teams.js?v=team-selector-1');
+      await import('./rep-admin.js?v=rep-admin-3');
     }
 
     if (cfg.SUPABASE_URL && (cfg.SUPABASE_PUBLISHABLE_KEY || cfg.SUPABASE_ANON_KEY)) {
