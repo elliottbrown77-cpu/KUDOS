@@ -1,4 +1,4 @@
-const KUDOS_REP_TOOLS_VERSION = '2026-09-16.4';
+const KUDOS_REP_TOOLS_VERSION = '2026-09-16.5';
 
 const CFG = window.KUDOS_CONFIG || {};
 const SUPABASE_KEY = CFG.SUPABASE_PUBLISHABLE_KEY || CFG.SUPABASE_ANON_KEY || '';
@@ -293,19 +293,19 @@ if (!READY) {
         <td>${fmt(c.target)} ${esc(c.unit)}</td>
         <td class="num">
           <div class="rep-tool-actions" style="justify-content:flex-end">
-            <button class="btn danger compact rep-tool-danger" data-rep-remove-challenge="${esc(c.id)}" data-title="${esc(c.title)}">Remove from this team</button>
-            ${isFullAdmin && c.challenge_group_id ? `<button class="btn danger compact rep-tool-danger" data-admin-remove-challenge-group="${esc(c.challenge_group_id)}" data-title="${esc(c.title)}">Remove from all teams</button>` : ''}
+            <button class="btn danger compact rep-tool-danger" data-rep-remove-challenge="${esc(c.id)}" data-title="${esc(c.title)}">Delete from this team</button>
+            ${isFullAdmin && c.challenge_group_id ? `<button class="btn danger compact rep-tool-danger" data-admin-remove-challenge-group="${esc(c.challenge_group_id)}" data-title="${esc(c.title)}">Delete from all teams</button>` : ''}
           </div>
         </td>
       </tr>
     `).join('');
 
     return `
-      <div class="section-title"><h2>Challenge management</h2><p>Rep/Admin controls • soft removal keeps historic entries</p></div>
+      <div class="section-title"><h2>Challenge management</h2><p>Permanent deletion • term-based challenge reset</p></div>
       <div class="card rep-tool-card">
         <div class="notice">${isFullAdmin
-          ? 'Remove from this team affects only the selected team. Remove from all teams deactivates every active copy in the same shared challenge group. Historic entries are retained, but removed challenges stop counting in active progress, scoring and reports.'
-          : 'Removing a challenge sets it inactive for your team. Historic entries are retained for audit/history, but the challenge and its challenge-derived KUDOS no longer count in active reporting.'}</div>
+          ? 'Delete from this team permanently removes that team copy. Delete from all teams permanently removes every copy in the shared challenge group. Challenge progress entries and PSF links are deleted with the challenge and scores/reports are recalculated.'
+          : 'Deleting a challenge permanently removes it from your team. Challenge progress entries and PSF links are deleted with it and scores/reports are recalculated.'}</div>
         <div class="table-wrap" style="margin-top:12px">
           <table class="rep-tool-table">
             <thead><tr><th>Challenge</th><th>Target</th><th></th></tr></thead>
@@ -404,17 +404,28 @@ if (!READY) {
   }
 
   async function removeChallenge(id, title) {
-    const ok = window.confirm(`Remove "${title}" from this team's active challenges?\n\nHistoric entries will be retained, but the challenge will stop counting in active progress and challenge-derived KUDOS.`);
+    const { count: progressCount, error: countError } = await db
+      .from('progress_entries')
+      .select('id', { count: 'exact', head: true })
+      .eq('challenge_id', id);
+    if (countError) throw countError;
+
+    const entries = Number(progressCount || 0);
+    const ok = window.confirm(
+      `Permanently delete "${title}" from this team?\n\n` +
+      `This will delete the challenge${entries ? ` and ${entries} logged progress entr${entries === 1 ? 'y' : 'ies'}` : ''}. ` +
+      `Its PSF links will also be removed and KUDOS scores/reports will be recalculated.\n\nThis cannot be undone.`
+    );
     if (!ok) return;
 
     const { data, error } = await db
       .from('challenges')
-      .update({ active: false })
+      .delete()
       .eq('id', id)
       .select('id');
 
     if (error) throw error;
-    if (!data?.length) throw new Error('No challenge was changed. Check that you have permission for this team.');
+    if (!data?.length) throw new Error('No challenge was deleted. Check that you have permission for this team.');
     window.location.reload();
   }
 
@@ -422,33 +433,41 @@ if (!READY) {
     const ctx = await getContext();
     if (ctx.appUser?.role !== 'admin') throw new Error('Administrator permission is required.');
 
-    const { count, error: countError } = await db
+    const { data: copies, error: copyError } = await db
       .from('challenges')
+      .select('id,team_id')
+      .eq('challenge_group_id', groupId);
+
+    if (copyError) throw copyError;
+    if (!copies?.length) throw new Error('No copies of this challenge were found.');
+
+    const challengeIds = copies.map(x => x.id);
+    const { count: progressCount, error: progressError } = await db
+      .from('progress_entries')
       .select('id', { count: 'exact', head: true })
-      .eq('challenge_group_id', groupId)
-      .eq('active', true);
+      .in('challenge_id', challengeIds);
 
-    if (countError) throw countError;
+    if (progressError) throw progressError;
 
-    const copies = Number(count || 0);
-    if (!copies) throw new Error('No active copies of this challenge were found.');
+    const entries = Number(progressCount || 0);
+    const copyCount = copies.length;
 
     const ok = window.confirm(
-      `Remove "${title}" from all teams where it is active?\n\n` +
-      `${copies} challenge cop${copies === 1 ? 'y' : 'ies'} will be deactivated.\n\n` +
-      `Historic entries will be retained, but the challenge will stop counting in active progress, scoring and reports.`
+      `Permanently delete "${title}" from all teams?\n\n` +
+      `${copyCount} challenge cop${copyCount === 1 ? 'y' : 'ies'} will be deleted` +
+      `${entries ? ` together with ${entries} logged progress entr${entries === 1 ? 'y' : 'ies'}` : ''}. ` +
+      `PSF links will also be removed and KUDOS scores/reports will be recalculated.\n\nThis cannot be undone.`
     );
     if (!ok) return;
 
     const { data, error } = await db
       .from('challenges')
-      .update({ active: false })
+      .delete()
       .eq('challenge_group_id', groupId)
-      .eq('active', true)
       .select('id,team_id');
 
     if (error) throw error;
-    if (!data?.length) throw new Error('No challenge copies were changed.');
+    if (!data?.length) throw new Error('No challenge copies were deleted.');
     window.location.reload();
   }
 
@@ -962,7 +981,7 @@ if (!READY) {
               await removeChallenge(btn.dataset.repRemoveChallenge, btn.dataset.title || 'challenge');
             } catch (err) {
               btn.disabled = false;
-              setStatus(`Could not remove challenge: ${err.message || err}`, true);
+              setStatus(`Could not delete challenge: ${err.message || err}`, true);
             }
           });
         });
@@ -974,7 +993,7 @@ if (!READY) {
               await removeChallengeGroup(btn.dataset.adminRemoveChallengeGroup, btn.dataset.title || 'challenge');
             } catch (err) {
               btn.disabled = false;
-              setStatus(`Could not remove challenge from all teams: ${err.message || err}`, true);
+              setStatus(`Could not delete challenge from all teams: ${err.message || err}`, true);
             }
           });
         });

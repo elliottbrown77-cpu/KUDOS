@@ -1,0 +1,5 @@
+-- Reference only; already applied live.
+-- progress_entries.challenge_id -> challenges.id ON DELETE CASCADE
+-- authenticated DELETE policy on challenges:
+--   admin = any challenge
+--   rep = own Rep-team challenge only
