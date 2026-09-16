@@ -1,0 +1,25 @@
+-- KUDOS Admin Dashboard backend
+-- ALREADY APPLIED to the live Supabase KUDOS project on 16 Sep 2026.
+-- Keep this file in GitHub as a record / for rebuilding another environment.
+-- Do not re-run against the live project unless you are deliberately rebuilding it.
+
+-- Main objects added/changed:
+--   public.access_directory
+--   public.pending_access_invites
+--   public.access_role_audit
+--   private.current_kudos_role()
+--   private.sync_kudos_access_directory()
+--   private.apply_pending_kudos_access()
+--   private.enforce_last_kudos_admin()
+--   private.audit_kudos_access_change()
+--   admin RLS policies on public.app_users
+--
+-- Behaviour:
+--   * Only KUDOS admins can list/manage privileged access.
+--   * Reps can only read their own app_users row.
+--   * Rep role requires a team; Admin role has no team_id.
+--   * The database refuses to remove/downgrade the final KUDOS administrator.
+--   * New email-link invite accounts automatically receive the pre-assigned role.
+--   * Grants, changes and revocations are audited.
+--
+-- The live schema should be treated as authoritative for the full SQL definitions.

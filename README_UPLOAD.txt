@@ -1,33 +1,40 @@
-KUDOS REP TOOLS - GITHUB UPLOAD
+KUDOS ADMIN DASHBOARD - GITHUB UPLOAD
 
-Upload these two files to the ROOT of the elliottbrown77-cpu/KUDOS repository on the main branch:
+Upload/replace these files in the ROOT of elliottbrown77-cpu/KUDOS on the main branch:
 
 1. rep-admin.js
-   - New file.
-   - Adds Rep/Admin controls for:
-     * soft-removing a challenge from the selected team
-     * deleting individual Progress, Recognition, Innovation and Flight Safety entries
-     * deducting KUDOS points with a mandatory reason and audit trail
+   REPLACE the current rep-admin.js.
+   Adds:
+   - Admin Dashboard inside the Rep/Admin screen.
+   - Counts for Admins, Reps, unassigned accounts and pending invites.
+   - Invite a new Rep/Admin by email.
+   - Assign/change role and Rep team.
+   - Revoke access.
+   - Email passwordless sign-in links.
+   - Pending invitation management.
+   - Access audit history.
+   - Passwordless email-link sign-in option on the Rep/Admin login screen.
+   - Retains all previous challenge/entry/KUDOS moderation controls.
 
 2. index.html
-   - Replace the existing root index.html with this file.
-   - The only functional change is that it loads rep-admin.js after app.js.
-   - The query-string version is bumped so browsers and the service worker fetch the new code.
+   REPLACE the current index.html.
+   This only bumps the rep-admin.js cache version so the new code is served immediately.
 
-No Supabase SQL needs to be run for this upload. The required backend tables, RLS permissions,
-score recalculation changes and audit mechanism have already been applied to the live KUDOS Supabase project.
+3. ADMIN_DASHBOARD_BACKEND_ALREADY_APPLIED.sql
+   Optional source-control/reference file.
+   The backend changes are ALREADY LIVE in Supabase. Do NOT run this file against the live project.
 
-Expected deployment:
-GitHub main -> existing Netlify deployment for chfkudos.netlify.app.
+How invitations work:
+- Admin enters email, role and team (team is required only for Rep).
+- KUDOS stores the pending access role.
+- Supabase sends a passwordless email sign-in link.
+- When the account is created, the stored KUDOS role is applied automatically.
+- The recipient opens KUDOS from the email and has the assigned access.
+- Existing Auth accounts can be granted/changed immediately without using Supabase.
 
-After Netlify deploys:
-- Open KUDOS.
-- Sign in on the Rep tab with a Performance Rep or Admin account.
-- Rep controls should appear below the normal Rep dashboard.
-- Reps are restricted by Supabase RLS to their own team.
-- Admins can choose which team to manage from the Rep controls panel.
-
-Safety controls:
-- Reps can only act on their own team; Supabase RLS enforces this server-side.
-- Point deductions require a reason and cannot exceed the person's current KUDOS balance.
-- Challenge removal is a soft removal; historic contribution records remain in the database.
+Safety:
+- Only Admins can see/manage the access directory.
+- Reps remain limited to their own team.
+- The final Admin cannot be revoked or downgraded.
+- All access grants, changes and revocations are audited.
+- No Supabase service-role key is exposed in the browser.

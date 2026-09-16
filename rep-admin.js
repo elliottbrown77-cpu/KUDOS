@@ -1,4 +1,4 @@
-const KUDOS_REP_TOOLS_VERSION = '2026-09-16.1';
+const KUDOS_REP_TOOLS_VERSION = '2026-09-16.2';
 
 const CFG = window.KUDOS_CONFIG || {};
 const SUPABASE_KEY = CFG.SUPABASE_PUBLISHABLE_KEY || CFG.SUPABASE_ANON_KEY || '';
@@ -170,9 +170,27 @@ if (!READY) {
       #kudos-rep-tools .rep-tool-form .field{margin:0}
       #kudos-rep-tools .rep-tool-status{margin-top:10px}
       #kudos-rep-tools .adjustment-negative{font-weight:800}
+      #kudos-rep-tools .admin-access-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:14px 0}
+      #kudos-rep-tools .admin-access-metric{padding:16px;border-radius:14px;background:rgba(12,35,56,.05)}
+      #kudos-rep-tools .admin-access-metric b{display:block;font-size:1.7rem;line-height:1}
+      #kudos-rep-tools .admin-access-metric span{display:block;margin-top:7px;font-size:.86rem;opacity:.72}
+      #kudos-rep-tools .admin-invite-form{display:grid;grid-template-columns:2fr 1fr 1.2fr auto;gap:10px;align-items:end}
+      #kudos-rep-tools .admin-invite-form .field{margin:0}
+      #kudos-rep-tools .access-row-actions{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+      #kudos-rep-tools .access-role-select{min-width:110px}
+      #kudos-rep-tools .access-team-select{min-width:150px}
+      #kudos-rep-tools .access-current-user{font-size:.74rem;font-weight:800;letter-spacing:.05em;text-transform:uppercase;opacity:.65}
+      #kudos-rep-tools .access-audit{font-size:.88rem}
+      #kudos-rep-tools .magic-link-card{margin-top:14px}
+      @media(max-width:900px){
+        #kudos-rep-tools .admin-access-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+        #kudos-rep-tools .admin-invite-form{grid-template-columns:1fr 1fr}
+      }
       @media(max-width:760px){
         #kudos-rep-tools .rep-tool-form{grid-template-columns:1fr}
         #kudos-rep-tools .rep-tool-table{min-width:760px}
+        #kudos-rep-tools .admin-access-grid{grid-template-columns:1fr 1fr}
+        #kudos-rep-tools .admin-invite-form{grid-template-columns:1fr}
       }
     `;
     document.head.appendChild(style);
@@ -366,11 +384,393 @@ if (!READY) {
     window.location.reload();
   }
 
+
+  const dt = value => {
+    if (!value) return 'Never';
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return String(value);
+    return d.toLocaleString('en-GB', {dateStyle:'medium', timeStyle:'short'});
+  };
+
+  async function loadAccessAdminData() {
+    const [directoryRes, accessRes, pendingRes, auditRes] = await Promise.all([
+      db.from('access_directory').select('*').order('email'),
+      db.from('app_users').select('*'),
+      db.from('pending_access_invites').select('*').order('invited_at', {ascending:false}),
+      db.from('access_role_audit').select('*').order('changed_at', {ascending:false}).limit(50)
+    ]);
+    const err = [directoryRes, accessRes, pendingRes, auditRes].find(r => r.error)?.error;
+    if (err) throw err;
+    return {
+      directory: directoryRes.data || [],
+      access: accessRes.data || [],
+      pending: pendingRes.data || [],
+      audit: auditRes.data || []
+    };
+  }
+
+  function teamSelectHtml(teams, selected='', disabled=false, attr='') {
+    return `<select class="access-team-select" ${attr} ${disabled?'disabled':''}>
+      <option value="">Choose team…</option>
+      ${teams.map(t=>`<option value="${esc(t.id)}" ${t.id===selected?'selected':''}>${esc(t.name)}</option>`).join('')}
+    </select>`;
+  }
+
+  function renderAccessAdminSection(ctx, teams, data) {
+    if (ctx.appUser?.role !== 'admin') return '';
+
+    const accessMap = Object.fromEntries(data.access.map(a => [a.auth_user_id, a]));
+    const teamMap = Object.fromEntries(teams.map(t => [t.id, t.name]));
+    const admins = data.access.filter(a => a.role === 'admin').length;
+    const reps = data.access.filter(a => a.role === 'rep').length;
+    const unassigned = data.directory.filter(d => !accessMap[d.auth_user_id]).length;
+
+    const directoryRows = data.directory.map(d => {
+      const a = accessMap[d.auth_user_id];
+      const role = a?.role || '';
+      const teamId = a?.team_id || '';
+      const isCurrent = d.auth_user_id === ctx.user.id;
+      return `<tr>
+        <td>
+          <strong>${esc(d.email)}</strong>
+          ${isCurrent?'<div class="access-current-user">Current account</div>':''}
+        </td>
+        <td>${esc(dt(d.last_sign_in_at))}</td>
+        <td>
+          <select class="access-role-select" data-access-role="${esc(d.auth_user_id)}">
+            <option value="" ${!role?'selected':''}>No access</option>
+            <option value="rep" ${role==='rep'?'selected':''}>Rep</option>
+            <option value="admin" ${role==='admin'?'selected':''}>Admin</option>
+          </select>
+        </td>
+        <td>${teamSelectHtml(teams, teamId, role!=='rep', `data-access-team="${esc(d.auth_user_id)}"`)}</td>
+        <td>
+          <div class="access-row-actions">
+            <button class="btn primary compact" data-access-save="${esc(d.auth_user_id)}">${a?'Save':'Grant'}</button>
+            <button class="btn ghost compact" data-access-link="${esc(d.email)}">Email sign-in link</button>
+            ${a?`<button class="btn danger compact rep-tool-danger" data-access-revoke="${esc(d.auth_user_id)}" data-email="${esc(d.email)}">Revoke</button>`:''}
+          </div>
+        </td>
+      </tr>`;
+    }).join('');
+
+    const pendingRows = data.pending.map(p => `
+      <tr>
+        <td><strong>${esc(p.email)}</strong></td>
+        <td>${esc(String(p.role||'').toUpperCase())}</td>
+        <td>${esc(p.team_id ? (teamMap[p.team_id] || 'Team') : 'All / Admin')}</td>
+        <td>${esc(dt(p.invited_at))}</td>
+        <td><button class="btn danger compact rep-tool-danger" data-pending-cancel="${esc(p.email)}">Cancel</button></td>
+      </tr>
+    `).join('');
+
+    const auditRows = data.audit.map(a => {
+      const oldRole = a.old_role ? String(a.old_role).toUpperCase() : '—';
+      const newRole = a.new_role ? String(a.new_role).toUpperCase() : '—';
+      const oldTeam = a.old_team_id ? (teamMap[a.old_team_id] || 'Team') : '—';
+      const newTeam = a.new_team_id ? (teamMap[a.new_team_id] || 'Team') : '—';
+      return `<tr>
+        <td>${esc(dt(a.changed_at))}</td>
+        <td><strong>${esc(a.target_email || '')}</strong></td>
+        <td>${esc(String(a.action||'').toUpperCase())}</td>
+        <td>${esc(oldRole)} ${oldTeam!=='—'?`• ${esc(oldTeam)}`:''}</td>
+        <td>${esc(newRole)} ${newTeam!=='—'?`• ${esc(newTeam)}`:''}</td>
+      </tr>`;
+    }).join('');
+
+    return `
+      <div class="section-title"><h2>Admin dashboard</h2><p>Manage Rep and Admin access inside KUDOS</p></div>
+      <div class="card rep-tool-card">
+        <div class="admin-access-grid">
+          <div class="admin-access-metric"><b>${admins}</b><span>Administrators</span></div>
+          <div class="admin-access-metric"><b>${reps}</b><span>Performance Reps</span></div>
+          <div class="admin-access-metric"><b>${unassigned}</b><span>Unassigned access accounts</span></div>
+          <div class="admin-access-metric"><b>${data.pending.length}</b><span>Pending invitations</span></div>
+        </div>
+
+        <h3>Invite a Rep or Admin</h3>
+        <div class="notice">The invite sends a passwordless sign-in email. KUDOS access is pre-assigned here, so the user does not need to be created or edited in Supabase manually.</div>
+        <form id="kudos-access-invite-form" class="admin-invite-form" style="margin-top:14px">
+          <div class="field"><label>Email</label><input name="email" type="email" required placeholder="name@example.com"></div>
+          <div class="field"><label>Role</label><select name="role" id="kudos-invite-role"><option value="rep">Rep</option><option value="admin">Admin</option></select></div>
+          <div class="field"><label>Team</label>${teamSelectHtml(teams,'',false,'name="team_id" id="kudos-invite-team"')}</div>
+          <button class="btn navy" type="submit">Send invite</button>
+        </form>
+        <div id="kudos-access-status" class="rep-tool-status"></div>
+      </div>
+
+      <div class="section-title"><h2>Access accounts</h2><p>Grant, change or revoke KUDOS management access</p></div>
+      <div class="card rep-tool-card">
+        <div class="notice">Revoking access removes the KUDOS role but does not delete the person's authentication account. At least one KUDOS administrator is always retained by the database.</div>
+        <div class="table-wrap" style="margin-top:12px">
+          <table class="rep-tool-table">
+            <thead><tr><th>Email</th><th>Last sign-in</th><th>Role</th><th>Team</th><th></th></tr></thead>
+            <tbody>${directoryRows || '<tr><td colspan="5"><div class="empty compact-empty">No access accounts found.</div></td></tr>'}</tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="section-title"><h2>Pending invitations</h2><p>Invites awaiting account creation/sign-in</p></div>
+      <div class="card rep-tool-card">
+        <div class="table-wrap">
+          <table class="rep-tool-table">
+            <thead><tr><th>Email</th><th>Role</th><th>Team</th><th>Invited</th><th></th></tr></thead>
+            <tbody>${pendingRows || '<tr><td colspan="5"><div class="empty compact-empty">No pending access invitations.</div></td></tr>'}</tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="section-title"><h2>Access audit</h2><p>Recent grants, role changes and revocations</p></div>
+      <div class="card rep-tool-card">
+        <div class="table-wrap">
+          <table class="rep-tool-table access-audit">
+            <thead><tr><th>Date</th><th>Account</th><th>Action</th><th>Previous</th><th>New</th></tr></thead>
+            <tbody>${auditRows || '<tr><td colspan="5"><div class="empty compact-empty">No access changes recorded yet.</div></td></tr>'}</tbody>
+          </table>
+        </div>
+      </div>
+    `;
+  }
+
+  function setAccessStatus(message, isError=false) {
+    const el = document.getElementById('kudos-access-status');
+    if (!el) return;
+    el.innerHTML = `<div class="notice ${isError?'':'success'}">${esc(message)}</div>`;
+  }
+
+  function transientAuthClient() {
+    return window.supabase.createClient(CFG.SUPABASE_URL, SUPABASE_KEY, {
+      auth: {persistSession:false, autoRefreshToken:false, detectSessionInUrl:false}
+    });
+  }
+
+  async function sendSignInLink(email, shouldCreateUser) {
+    const sender = transientAuthClient();
+    const options = {shouldCreateUser};
+    const redirect = `${window.location.origin}${window.location.pathname}`;
+    let result = await sender.auth.signInWithOtp({
+      email,
+      options: {...options, emailRedirectTo: redirect}
+    });
+    if (result.error && /redirect/i.test(String(result.error.message || ''))) {
+      result = await sender.auth.signInWithOtp({email, options});
+    }
+    if (result.error) throw result.error;
+  }
+
+  async function saveAccessRecord(userId, role, teamId) {
+    if (!['rep','admin'].includes(role)) throw new Error('Choose Rep or Admin.');
+    const record = {
+      auth_user_id: userId,
+      role,
+      team_id: role === 'rep' ? teamId : null
+    };
+    if (role === 'rep' && !teamId) throw new Error('Choose a team for a Rep.');
+    const {error} = await db.from('app_users').upsert(record, {onConflict:'auth_user_id'});
+    if (error) throw error;
+  }
+
+  async function revokeAccessRecord(userId, email) {
+    const ok = window.confirm(`Revoke KUDOS management access for ${email}?\n\nTheir authentication account will remain, but they will no longer have Rep/Admin controls.`);
+    if (!ok) return false;
+    const {error} = await db.from('app_users').delete().eq('auth_user_id', userId);
+    if (error) throw error;
+    return true;
+  }
+
+  async function inviteAccess(ctx, email, role, teamId, adminData) {
+    email = String(email || '').trim().toLowerCase();
+    if (!email) throw new Error('Enter an email address.');
+    if (!['rep','admin'].includes(role)) throw new Error('Choose Rep or Admin.');
+    if (role === 'rep' && !teamId) throw new Error('Choose a team for the Rep.');
+
+    const existing = adminData.directory.find(d => String(d.email||'').toLowerCase() === email);
+    if (existing) {
+      await saveAccessRecord(existing.auth_user_id, role, teamId);
+      await sendSignInLink(email, false);
+      return 'Access updated and a sign-in link has been emailed.';
+    }
+
+    const pending = {
+      email,
+      role,
+      team_id: role === 'rep' ? teamId : null,
+      invited_by: ctx.user.id
+    };
+
+    const {error: pendingError} = await db
+      .from('pending_access_invites')
+      .upsert(pending, {onConflict:'email'});
+    if (pendingError) throw pendingError;
+
+    try {
+      await sendSignInLink(email, true);
+    } catch (err) {
+      await db.from('pending_access_invites').delete().eq('email', email);
+      throw err;
+    }
+
+    return 'Invitation sent. Access will activate automatically when the account is created from the email link.';
+  }
+
+  async function cancelPendingInvite(email) {
+    const ok = window.confirm(`Cancel the pending KUDOS access invitation for ${email}?`);
+    if (!ok) return false;
+    const {error} = await db.from('pending_access_invites').delete().eq('email', email);
+    if (error) throw error;
+    return true;
+  }
+
+  function bindAccessAdmin(ctx, teams, adminData, root) {
+    if (ctx.appUser?.role !== 'admin') return;
+
+    const inviteRole = document.getElementById('kudos-invite-role');
+    const inviteTeam = document.getElementById('kudos-invite-team');
+    const syncInviteTeam = () => {
+      if (!inviteRole || !inviteTeam) return;
+      const rep = inviteRole.value === 'rep';
+      inviteTeam.disabled = !rep;
+      if (!rep) inviteTeam.value = '';
+    };
+    inviteRole?.addEventListener('change', syncInviteTeam);
+    syncInviteTeam();
+
+    root.querySelectorAll('[data-access-role]').forEach(sel => {
+      const userId = sel.dataset.accessRole;
+      const teamSel = root.querySelector(`[data-access-team="${CSS.escape(userId)}"]`);
+      const sync = () => {
+        if (!teamSel) return;
+        const rep = sel.value === 'rep';
+        teamSel.disabled = !rep;
+        if (!rep) teamSel.value = '';
+      };
+      sel.addEventListener('change', sync);
+      sync();
+    });
+
+    document.getElementById('kudos-access-invite-form')?.addEventListener('submit', async e => {
+      e.preventDefault();
+      const button = e.target.querySelector('button[type="submit"]');
+      const fd = new FormData(e.target);
+      try {
+        if (button) button.disabled = true;
+        setAccessStatus('Sending invitation…');
+        const message = await inviteAccess(
+          ctx,
+          fd.get('email'),
+          String(fd.get('role') || ''),
+          String(fd.get('team_id') || ''),
+          adminData
+        );
+        setAccessStatus(message);
+        setTimeout(() => window.location.reload(), 900);
+      } catch (err) {
+        if (button) button.disabled = false;
+        setAccessStatus(`Could not send invite: ${err.message || err}`, true);
+      }
+    });
+
+    root.querySelectorAll('[data-access-save]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const userId = btn.dataset.accessSave;
+        const role = root.querySelector(`[data-access-role="${CSS.escape(userId)}"]`)?.value || '';
+        const teamId = root.querySelector(`[data-access-team="${CSS.escape(userId)}"]`)?.value || '';
+        try {
+          btn.disabled = true;
+          await saveAccessRecord(userId, role, teamId);
+          setAccessStatus('Access saved.');
+          setTimeout(() => window.location.reload(), 500);
+        } catch (err) {
+          btn.disabled = false;
+          setAccessStatus(`Could not save access: ${err.message || err}`, true);
+        }
+      });
+    });
+
+    root.querySelectorAll('[data-access-revoke]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        try {
+          btn.disabled = true;
+          const changed = await revokeAccessRecord(btn.dataset.accessRevoke, btn.dataset.email || 'this account');
+          if (changed) window.location.reload();
+          else btn.disabled = false;
+        } catch (err) {
+          btn.disabled = false;
+          setAccessStatus(`Could not revoke access: ${err.message || err}`, true);
+        }
+      });
+    });
+
+    root.querySelectorAll('[data-access-link]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        try {
+          btn.disabled = true;
+          await sendSignInLink(btn.dataset.accessLink, false);
+          setAccessStatus(`Sign-in email sent to ${btn.dataset.accessLink}.`);
+        } catch (err) {
+          setAccessStatus(`Could not send sign-in email: ${err.message || err}`, true);
+        } finally {
+          btn.disabled = false;
+        }
+      });
+    });
+
+    root.querySelectorAll('[data-pending-cancel]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        try {
+          btn.disabled = true;
+          const changed = await cancelPendingInvite(btn.dataset.pendingCancel);
+          if (changed) window.location.reload();
+          else btn.disabled = false;
+        } catch (err) {
+          btn.disabled = false;
+          setAccessStatus(`Could not cancel invite: ${err.message || err}`, true);
+        }
+      });
+    });
+  }
+
+  function renderMagicLinkSignin(main) {
+    if (document.getElementById('kudos-rep-tools')) return;
+    const root = document.createElement('section');
+    root.id = 'kudos-rep-tools';
+    root.innerHTML = `
+      <div class="card magic-link-card">
+        <h3 style="margin-top:0">Sign in by email link</h3>
+        <p class="challenge-desc">Reps and admins can sign in without a password. Enter the email address that has been granted KUDOS access.</p>
+        <form id="kudos-magic-login-form" class="admin-invite-form">
+          <div class="field"><label>Email</label><input name="email" type="email" required autocomplete="email" placeholder="name@example.com"></div>
+          <div></div><div></div>
+          <button class="btn navy" type="submit">Email sign-in link</button>
+        </form>
+        <div id="kudos-magic-login-status" class="rep-tool-status"></div>
+      </div>
+    `;
+    main.appendChild(root);
+    document.getElementById('kudos-magic-login-form')?.addEventListener('submit', async e => {
+      e.preventDefault();
+      const btn = e.target.querySelector('button[type="submit"]');
+      const email = String(new FormData(e.target).get('email') || '').trim();
+      const status = document.getElementById('kudos-magic-login-status');
+      try {
+        if (btn) btn.disabled = true;
+        await sendSignInLink(email, false);
+        if (status) status.innerHTML = '<div class="notice success">If this email has a KUDOS access account, a sign-in link has been sent.</div>';
+      } catch (err) {
+        if (status) status.innerHTML = `<div class="notice">${esc(err.message || err)}</div>`;
+      } finally {
+        if (btn) btn.disabled = false;
+      }
+    });
+  }
+
+
   async function renderTools(main, ctx, teams, teamId) {
     const existing = document.getElementById('kudos-rep-tools');
     if (existing) existing.remove();
 
     const data = await loadTeamData(teamId);
+    const adminData = ctx.appUser?.role === 'admin' ? await loadAccessAdminData() : null;
     const selectedTeam = teams.find(t => t.id === teamId);
     const existingAdminModeration = !!main.querySelector('.moderation-table');
 
@@ -393,6 +793,7 @@ if (!READY) {
       ${renderChallengeSection(data)}
       ${renderEntrySection(data, existingAdminModeration)}
       ${renderPointsSection(data)}
+      ${adminData ? renderAccessAdminSection(ctx, teams, adminData) : ''}
     `;
     main.appendChild(root);
 
@@ -450,7 +851,11 @@ if (!READY) {
     try {
       styles();
       const ctx = await getContext();
-      if (!ctx.user || !ctx.appUser || !['rep', 'admin'].includes(ctx.appUser.role)) return;
+      if (!ctx.user) {
+        renderMagicLinkSignin(main);
+        return;
+      }
+      if (!ctx.appUser || !['rep', 'admin'].includes(ctx.appUser.role)) return;
 
       const teams = await getTeams();
       let teamId = ctx.appUser.role === 'rep'
