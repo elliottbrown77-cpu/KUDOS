@@ -71,16 +71,22 @@
     <input name="site_url">
   </form>
 
-<script src="config.js"></script>
+  <script src="config.js"></script>
   <script>
     const cfg = window.KUDOS_CONFIG || {};
+
+    async function loadKudosApp() {
+      await import('./app.js?v=rep-admin-1');
+      await import('./rep-admin.js?v=rep-admin-1');
+    }
+
     if (cfg.SUPABASE_URL && (cfg.SUPABASE_PUBLISHABLE_KEY || cfg.SUPABASE_ANON_KEY)) {
       const script = document.createElement('script');
       script.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';
-      script.onload = () => import('./app.js?v=mobile-nav-safe-1');
+      script.onload = () => loadKudosApp();
       document.head.appendChild(script);
     } else {
-      import('./app.js?v=mobile-nav-safe-1');
+      loadKudosApp();
     }
   </script>
 </body>
