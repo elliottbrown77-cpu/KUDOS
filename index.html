@@ -20,18 +20,28 @@
       display:none;align-items:center;justify-content:space-between;gap:12px
     }
     #kudos-install-prompt strong{display:block}
-    #kudos-install-prompt small{display:block;opacity:.78;margin-top:2px}
+    #kudos-install-prompt small{display:block;opacity:.82;margin-top:3px;line-height:1.35}
+    #kudos-install-prompt .install-actions{display:flex;gap:8px;align-items:center}
     #kudos-install-prompt button{
       border:0;border-radius:11px;padding:10px 14px;font:inherit;font-weight:800;
       background:#fff;color:#0C2338;white-space:nowrap
+    }
+    #kudos-install-prompt button.install-dismiss{
+      background:transparent;color:#fff;border:1px solid rgba(255,255,255,.35)
     }
   </style>
 </head>
 <body>
   <div id="app"></div>
   <div id="kudos-install-prompt" role="region" aria-label="Install KUDOS">
-    <div><strong>Install KUDOS</strong><small>Add the app to your phone for quicker access.</small></div>
-    <button type="button" id="kudos-install-button">Install</button>
+    <div>
+      <strong id="kudos-install-title">Install KUDOS</strong>
+      <small id="kudos-install-copy">Add the app to your phone for quicker access.</small>
+    </div>
+    <div class="install-actions">
+      <button type="button" class="install-dismiss" id="kudos-install-dismiss">Not now</button>
+      <button type="button" id="kudos-install-button">Install</button>
+    </div>
   </div>
 
   <form name="kudos-safety" method="POST" data-netlify="true" data-netlify-honeypot="bot-field" class="netlify-static-form" style="display:none!important" aria-hidden="true">
@@ -72,29 +82,87 @@
 
     let kudosInstallEvent = null;
 
+    const installPrompt = () => document.getElementById('kudos-install-prompt');
+    const isStandalone = () =>
+      window.matchMedia('(display-mode: standalone)').matches ||
+      window.navigator.standalone === true;
+
+    const isIOS = () =>
+      /iPhone|iPad|iPod/i.test(navigator.userAgent) ||
+      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+    const hideInstallPrompt = () => {
+      const prompt = installPrompt();
+      if (prompt) prompt.style.display = 'none';
+    };
+
+    const showIOSInstallPrompt = () => {
+      if (!isIOS() || isStandalone()) return;
+
+      const dismissedAt = Number(localStorage.getItem('kudos_ios_install_dismissed') || 0);
+      const sevenDays = 7 * 24 * 60 * 60 * 1000;
+      if (dismissedAt && Date.now() - dismissedAt < sevenDays) return;
+
+      const prompt = installPrompt();
+      const title = document.getElementById('kudos-install-title');
+      const copy = document.getElementById('kudos-install-copy');
+      const button = document.getElementById('kudos-install-button');
+      if (!prompt || !title || !copy || !button) return;
+
+      title.textContent = 'Add KUDOS to your Home Screen';
+      copy.textContent = 'On iPhone: tap Share, choose “Add to Home Screen”, then tap Add.';
+      button.textContent = 'Got it';
+      button.dataset.installMode = 'ios';
+      prompt.style.display = 'flex';
+    };
+
     window.addEventListener('beforeinstallprompt', event => {
       event.preventDefault();
       kudosInstallEvent = event;
-      const prompt = document.getElementById('kudos-install-prompt');
-      if (prompt && !window.matchMedia('(display-mode: standalone)').matches) {
+      const prompt = installPrompt();
+      const title = document.getElementById('kudos-install-title');
+      const copy = document.getElementById('kudos-install-copy');
+      const button = document.getElementById('kudos-install-button');
+
+      if (prompt && title && copy && button && !isStandalone()) {
+        title.textContent = 'Install KUDOS';
+        copy.textContent = 'Add the app to your phone for quicker access.';
+        button.textContent = 'Install';
+        button.dataset.installMode = 'native';
         prompt.style.display = 'flex';
       }
     });
 
     window.addEventListener('appinstalled', () => {
       kudosInstallEvent = null;
-      const prompt = document.getElementById('kudos-install-prompt');
-      if (prompt) prompt.style.display = 'none';
+      hideInstallPrompt();
+    });
+
+    window.addEventListener('load', () => {
+      setTimeout(showIOSInstallPrompt, 1200);
     });
 
     document.addEventListener('click', async event => {
-      if (event.target?.id !== 'kudos-install-button' || !kudosInstallEvent) return;
+      if (event.target?.id === 'kudos-install-dismiss') {
+        if (isIOS()) localStorage.setItem('kudos_ios_install_dismissed', String(Date.now()));
+        hideInstallPrompt();
+        return;
+      }
+
+      if (event.target?.id !== 'kudos-install-button') return;
+
+      if (event.target.dataset.installMode === 'ios') {
+        localStorage.setItem('kudos_ios_install_dismissed', String(Date.now()));
+        hideInstallPrompt();
+        return;
+      }
+
+      if (!kudosInstallEvent) return;
       const promptEvent = kudosInstallEvent;
       kudosInstallEvent = null;
       await promptEvent.prompt();
       await promptEvent.userChoice;
-      const prompt = document.getElementById('kudos-install-prompt');
-      if (prompt) prompt.style.display = 'none';
+      hideInstallPrompt();
     });
 
     if ('serviceWorker' in navigator) {
