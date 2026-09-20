@@ -3,9 +3,11 @@
   "type": "module",
   "dependencies": {
     "@netlify/blobs": "11.1.0",
-    "web-push": "3.6.7"
+    "web-push": "3.6.7",
+    "nodemailer": "7.0.6"
   },
   "devDependencies": {
-    "@types/web-push": "3.6.4"
+    "@types/web-push": "3.6.4",
+    "@types/nodemailer": "7.0.1"
   }
 }
