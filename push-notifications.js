@@ -138,7 +138,6 @@ function notificationCard(enabled, message = '') {
       <div>
         <div class="eyebrow">PROGRESS REMINDERS</div>
         <h3 style="margin:.2rem 0 .35rem">KUDOS notifications</h3>
-        <p class="challenge-desc">Get a reminder every <strong>Monday at 08:00</strong> and <strong>Friday at 12:00</strong> (UK time) to update your KUDOS progress.</p>
         ${message ? `<div class="help" style="margin-top:7px">${message}</div>` : ''}
       </div>
       <button class="btn ${enabled ? 'ghost' : 'navy'}" id="kudos-reminder-toggle">${enabled ? 'Turn off reminders' : 'Enable reminders'}</button>
