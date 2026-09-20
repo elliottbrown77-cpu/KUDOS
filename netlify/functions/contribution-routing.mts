@@ -55,7 +55,13 @@ export default async (req: Request) => {
 
   const routes = normalise(body?.routes);
   await store().setJSON("routes", { routes, updatedAt: new Date().toISOString() });
-  return Response.json({ ok: true, routes });
+  const smtpConfigured = !!(
+    process.env.KUDOS_SMTP_HOST &&
+    process.env.KUDOS_SMTP_USER &&
+    process.env.KUDOS_SMTP_PASS &&
+    (process.env.KUDOS_EMAIL_FROM || process.env.KUDOS_SMTP_USER)
+  );
+  return Response.json({ ok: true, routes, smtpConfigured });
 };
 
 export const config = { path: "/api/contribution-routing" };
