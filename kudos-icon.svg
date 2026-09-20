@@ -1,0 +1,4 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="KUDOS K">
+  <circle cx="256" cy="256" r="220" fill="#0E5138" stroke="#D8B14E" stroke-width="30"/>
+  <path fill="#D8B14E" d="M166 128h62v105l105-105h82L288 251l132 133h-84L228 274v110h-62V128z"/>
+</svg>
