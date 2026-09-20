@@ -8,19 +8,19 @@
   "theme_color": "#0C2338",
   "icons": [
     {
-      "src": "kudos-icon-192.png",
+      "src": "kudos-app-192-v2.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "kudos-icon-512.png",
+      "src": "kudos-app-512-v2.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "kudos-icon-512.png",
+      "src": "kudos-app-512-v2.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
