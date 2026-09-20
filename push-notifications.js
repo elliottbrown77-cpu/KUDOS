@@ -1,5 +1,6 @@
-const KUDOS_PUSH_VERSION = '2026-09-20.3';
+const KUDOS_PUSH_VERSION = '2026-09-20.4';
 const KUDOS_VAPID_PUBLIC_KEY = 'BO8d__SEQvllT9hy8fO2KRcjG8kbW-Zb52rq8KEUvFIdfzToPEtkJwTJNvBK5ILXxj3vvT2vfKPQtrlEBZACPqE';
+let reminderCardRendering = false;
 
 function base64UrlToUint8Array(value) {
   const padding = '='.repeat((4 - value.length % 4) % 4);
@@ -145,9 +146,18 @@ function notificationCard(enabled, message = '') {
 }
 
 async function renderReminderCard(message = '') {
+  if (reminderCardRendering) return;
   const main = document.querySelector('#app main');
-  if (!main || document.getElementById('kudos-reminder-card')) return;
+  if (!main) return;
 
+  const existingCards = [...document.querySelectorAll('#kudos-reminder-card')];
+  if (existingCards.length) {
+    existingCards.slice(1).forEach(card => card.remove());
+    return;
+  }
+
+  reminderCardRendering = true;
+  try {
   const headings = [...main.querySelectorAll('.section-title h2, h2')];
   const home = headings.some(h => /overview|make a contribution|current challenges/i.test(h.textContent || ''));
   if (!home) return;
@@ -176,19 +186,25 @@ async function renderReminderCard(message = '') {
       if (enabled) {
         await unsubscribe();
         localStorage.setItem('kudos_push_enabled', '0');
-        document.getElementById('kudos-reminder-card')?.remove();
+        document.querySelectorAll('#kudos-reminder-card').forEach(card => card.remove());
+        reminderCardRendering = false;
         await renderReminderCard('Reminders are off on this device.');
       } else {
         await subscribe();
         localStorage.setItem('kudos_push_enabled', '1');
-        document.getElementById('kudos-reminder-card')?.remove();
+        document.querySelectorAll('#kudos-reminder-card').forEach(card => card.remove());
+        reminderCardRendering = false;
         await renderReminderCard('Reminders are enabled on this device.');
       }
     } catch (error) {
-      document.getElementById('kudos-reminder-card')?.remove();
+      document.querySelectorAll('#kudos-reminder-card').forEach(card => card.remove());
+      reminderCardRendering = false;
       await renderReminderCard(error?.message || String(error));
     }
   });
+  } finally {
+    reminderCardRendering = false;
+  }
 }
 
 async function resyncExistingSubscription() {
