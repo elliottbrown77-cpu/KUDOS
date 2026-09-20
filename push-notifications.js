@@ -1,4 +1,4 @@
-const KUDOS_PUSH_VERSION = '2026-09-20.2';
+const KUDOS_PUSH_VERSION = '2026-09-20.3';
 const KUDOS_VAPID_PUBLIC_KEY = 'BO8d__SEQvllT9hy8fO2KRcjG8kbW-Zb52rq8KEUvFIdfzToPEtkJwTJNvBK5ILXxj3vvT2vfKPQtrlEBZACPqE';
 
 function base64UrlToUint8Array(value) {
@@ -156,9 +156,18 @@ async function renderReminderCard(message = '') {
   try { enabled = !!(await currentSubscription()) && Notification.permission === 'granted'; }
   catch {}
 
-  const anchor = main.querySelector('.scoring-explainer') || main.querySelector('.grid.four');
-  if (!anchor) return;
-  anchor.insertAdjacentHTML('afterend', notificationCard(enabled, message));
+  if (enabled) {
+    const crests = main.querySelector('.crest-row');
+    if (crests) {
+      crests.insertAdjacentHTML('beforebegin', notificationCard(true, message));
+    } else {
+      main.insertAdjacentHTML('beforeend', notificationCard(true, message));
+    }
+  } else {
+    const hero = main.querySelector('.hero');
+    if (!hero) return;
+    hero.insertAdjacentHTML('afterend', notificationCard(false, message));
+  }
 
   document.getElementById('kudos-reminder-toggle')?.addEventListener('click', async () => {
     const button = document.getElementById('kudos-reminder-toggle');
