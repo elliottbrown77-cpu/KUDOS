@@ -1,4 +1,4 @@
-const KUDOS_PUSH_VERSION = '2026-09-20.1';
+const KUDOS_PUSH_VERSION = '2026-09-20.2';
 const KUDOS_VAPID_PUBLIC_KEY = 'BO8d__SEQvllT9hy8fO2KRcjG8kbW-Zb52rq8KEUvFIdfzToPEtkJwTJNvBK5ILXxj3vvT2vfKPQtrlEBZACPqE';
 
 function base64UrlToUint8Array(value) {
@@ -73,6 +73,62 @@ async function unsubscribe() {
   const subscription = await currentSubscription();
   if (subscription) await subscription.unsubscribe();
   await postSubscription('unsubscribe');
+}
+
+
+
+function initialOptInPrompt() {
+  if (!('Notification' in window) || !('PushManager' in window) || !('serviceWorker' in navigator)) return;
+  if (Notification.permission !== 'default') return;
+  if (isIOS() && !isStandalone()) return;
+  if (document.getElementById('kudos-notification-optin')) return;
+
+  const dismissedAt = Number(localStorage.getItem('kudos_notification_prompt_dismissed') || 0);
+  const oneDay = 24 * 60 * 60 * 1000;
+  if (dismissedAt && Date.now() - dismissedAt < oneDay) return;
+
+  const prompt = document.createElement('div');
+  prompt.id = 'kudos-notification-optin';
+  prompt.setAttribute('role', 'region');
+  prompt.setAttribute('aria-label', 'Turn on KUDOS reminders');
+  prompt.innerHTML = `
+    <div class="kudos-notification-optin-copy">
+      <strong>Turn on KUDOS reminders</strong>
+      <span>Get a reminder to update your progress every Monday at 08:00 and Friday at 12:00.</span>
+    </div>
+    <div class="kudos-notification-optin-actions">
+      <button type="button" class="btn ghost" id="kudos-notification-later">Not now</button>
+      <button type="button" class="btn navy" id="kudos-notification-enable">Enable notifications</button>
+    </div>`;
+  document.body.appendChild(prompt);
+
+  document.getElementById('kudos-notification-later')?.addEventListener('click', () => {
+    localStorage.setItem('kudos_notification_prompt_dismissed', String(Date.now()));
+    prompt.remove();
+  });
+
+  document.getElementById('kudos-notification-enable')?.addEventListener('click', async () => {
+    const button = document.getElementById('kudos-notification-enable');
+    if (button) {
+      button.disabled = true;
+      button.textContent = 'Enabling…';
+    }
+    try {
+      await subscribe();
+      localStorage.setItem('kudos_push_enabled', '1');
+      localStorage.removeItem('kudos_notification_prompt_dismissed');
+      prompt.remove();
+      document.getElementById('kudos-reminder-card')?.remove();
+      await renderReminderCard('Reminders are enabled on this device.');
+    } catch (error) {
+      if (button) {
+        button.disabled = false;
+        button.textContent = 'Enable notifications';
+      }
+      const copy = prompt.querySelector('.kudos-notification-optin-copy span');
+      if (copy) copy.textContent = error?.message || String(error);
+    }
+  });
 }
 
 function notificationCard(enabled, message = '') {
@@ -161,4 +217,5 @@ window.addEventListener('load', () => {
   renderReminderCard();
   resyncExistingSubscription();
   openLogFromNotification();
+  setTimeout(initialOptInPrompt, 1400);
 });
