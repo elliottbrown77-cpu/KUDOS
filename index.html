@@ -13,10 +13,26 @@
 
   <style>
     .netlify-static-form{display:none!important}
+    #kudos-install-prompt{
+      position:fixed;left:16px;right:16px;bottom:86px;z-index:9999;
+      max-width:520px;margin:0 auto;padding:14px 16px;border-radius:16px;
+      background:#0C2338;color:#fff;box-shadow:0 10px 30px rgba(0,0,0,.22);
+      display:none;align-items:center;justify-content:space-between;gap:12px
+    }
+    #kudos-install-prompt strong{display:block}
+    #kudos-install-prompt small{display:block;opacity:.78;margin-top:2px}
+    #kudos-install-prompt button{
+      border:0;border-radius:11px;padding:10px 14px;font:inherit;font-weight:800;
+      background:#fff;color:#0C2338;white-space:nowrap
+    }
   </style>
 </head>
 <body>
   <div id="app"></div>
+  <div id="kudos-install-prompt" role="region" aria-label="Install KUDOS">
+    <div><strong>Install KUDOS</strong><small>Add the app to your phone for quicker access.</small></div>
+    <button type="button" id="kudos-install-button">Install</button>
+  </div>
 
   <form name="kudos-safety" method="POST" data-netlify="true" data-netlify-honeypot="bot-field" class="netlify-static-form" style="display:none!important" aria-hidden="true">
     <input type="hidden" name="form-name" value="kudos-safety">
@@ -53,6 +69,33 @@
       await import('./challenge-teams.js?v=team-selector-2');
       await import('./rep-admin.js?v=rep-admin-7');
     }
+
+    let kudosInstallEvent = null;
+
+    window.addEventListener('beforeinstallprompt', event => {
+      event.preventDefault();
+      kudosInstallEvent = event;
+      const prompt = document.getElementById('kudos-install-prompt');
+      if (prompt && !window.matchMedia('(display-mode: standalone)').matches) {
+        prompt.style.display = 'flex';
+      }
+    });
+
+    window.addEventListener('appinstalled', () => {
+      kudosInstallEvent = null;
+      const prompt = document.getElementById('kudos-install-prompt');
+      if (prompt) prompt.style.display = 'none';
+    });
+
+    document.addEventListener('click', async event => {
+      if (event.target?.id !== 'kudos-install-button' || !kudosInstallEvent) return;
+      const promptEvent = kudosInstallEvent;
+      kudosInstallEvent = null;
+      await promptEvent.prompt();
+      await promptEvent.userChoice;
+      const prompt = document.getElementById('kudos-install-prompt');
+      if (prompt) prompt.style.display = 'none';
+    });
 
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
