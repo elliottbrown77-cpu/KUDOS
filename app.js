@@ -236,7 +236,7 @@ function psfCoverage(teamId){
 
 function header(){
   const p=currentProfile();
-  return `<header class="topbar"><div class="brand"><img src="chf-crest.png" alt="CHF crest"><div><strong>KUDOS</strong><small>CHF Human Performance</small></div></div>
+  return `<header class="topbar"><div class="brand"><img src="kudos-header.svg?v=1" alt="KUDOS logo"><div><strong>KUDOS</strong><small>CHF Human Performance</small></div></div>
   <button class="profile-chip" data-action="profile"><div>${esc(p?.name||'Select profile')}</div><span>${esc(p?teamName(p.team_id):'')}</span></button></header>`;
 }
 function nav(){
