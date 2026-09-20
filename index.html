@@ -54,6 +54,13 @@
       await import('./rep-admin.js?v=rep-admin-7');
     }
 
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./service-worker.js', { scope: './' })
+          .catch(err => console.error('KUDOS service worker registration failed', err));
+      });
+    }
+
     if (cfg.SUPABASE_URL && (cfg.SUPABASE_PUBLISHABLE_KEY || cfg.SUPABASE_ANON_KEY)) {
       const script = document.createElement('script');
       script.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';
