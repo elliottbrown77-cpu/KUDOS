@@ -1,4 +1,4 @@
-const KUDOS_REP_TOOLS_VERSION = '2026-09-20.3';
+const KUDOS_REP_TOOLS_VERSION = '2026-09-20.4';
 
 const CFG = window.KUDOS_CONFIG || {};
 const SUPABASE_KEY = CFG.SUPABASE_PUBLISHABLE_KEY || CFG.SUPABASE_ANON_KEY || '';
@@ -343,18 +343,43 @@ if (!READY) {
     `;
   }
 
+  async function loadGlobalContributionData() {
+    const [profilesRes, safetyRes, innovationRes, rewardsRes] = await Promise.all([
+      db.from('profiles').select('id,name,team_id').eq('active', true).order('name'),
+      db.from('safety_entries').select('*').order('created_at', {ascending:false}).limit(500),
+      db.from('innovation_entries').select('*').order('created_at', {ascending:false}).limit(500),
+      db.from('recognition_entries').select('*').order('created_at', {ascending:false}).limit(500)
+    ]);
+    const err = [profilesRes, safetyRes, innovationRes, rewardsRes].find(r => r.error)?.error;
+    if (err) throw err;
+    return {
+      profiles: profilesRes.data || [],
+      entries: {
+        safety: safetyRes.data || [],
+        innovation: innovationRes.data || [],
+        recognition: rewardsRes.data || []
+      }
+    };
+  }
+
   function contributionDate(x) {
     return x.entry_date || String(x.created_at || '').slice(0, 10) || '—';
   }
 
-  function renderContributionQueues(data) {
+  function renderContributionQueues(data, teams=[], global=false) {
     const profileMap = Object.fromEntries(data.profiles.map(p => [p.id, p]));
+    const teamMap = Object.fromEntries(teams.map(t => [t.id, t.name]));
+    const teamCell = profileId => {
+      const teamId = profileMap[profileId]?.team_id;
+      return esc(teamMap[teamId] || 'Team');
+    };
 
     const safetyRows = [...data.entries.safety]
       .sort((a,b)=>String(b.created_at||b.entry_date||'').localeCompare(String(a.created_at||a.entry_date||'')))
       .map(x => `<tr>
         <td>${esc(contributionDate(x))}</td>
         <td><strong>${esc(profileMap[x.profile_id]?.name || 'Profile')}</strong></td>
+        ${global ? `<td>${teamCell(x.profile_id)}</td>` : ''}
         <td>${esc(x.category || 'Flight Safety')}</td>
         <td class="detail">${esc(x.description || '')}${x.external_reference ? `<div class="help">Ref: ${esc(x.external_reference)}</div>` : ''}</td>
       </tr>`).join('');
@@ -364,6 +389,7 @@ if (!READY) {
       .map(x => `<tr>
         <td>${esc(contributionDate(x))}</td>
         <td><strong>${esc(profileMap[x.profile_id]?.name || 'Profile')}</strong></td>
+        ${global ? `<td>${teamCell(x.profile_id)}</td>` : ''}
         <td>${esc(x.title || 'Innovation')}</td>
         <td class="detail">${esc(x.description || '')}</td>
       </tr>`).join('');
@@ -373,6 +399,7 @@ if (!READY) {
       .map(x => `<tr>
         <td>${esc(contributionDate(x))}</td>
         <td><strong>${esc(profileMap[x.submitter_profile_id]?.name || 'Profile')}</strong></td>
+        ${global ? `<td>${teamCell(x.submitter_profile_id)}</td>` : ''}
         <td>${esc(x.nominated_person || 'Not recorded')}</td>
         <td class="detail">${esc(x.reason || '')}</td>
       </tr>`).join('');
@@ -385,25 +412,27 @@ if (!READY) {
         </table>
       </div>`;
 
+    const scopeText = global ? 'All teams' : 'Team-scoped';
+
     return `
-      <div class="section-title"><h2>Contribution areas</h2><p>Team-scoped Safety, Innovation and Rewards</p></div>
+      <div class="section-title"><h2>Contribution areas</h2><p>${scopeText} Safety, Innovation and Rewards</p></div>
 
       <div class="card rep-tool-card">
         <div class="eyebrow">FLIGHT SAFETY</div>
         <h3 style="margin:.25rem 0 12px">Safety contributions</h3>
-        ${table(['Date','Submitted by','Category','Contribution'], safetyRows, 'No Flight Safety contributions for this team.')}
+        ${table(global ? ['Date','Submitted by','Team','Category','Contribution'] : ['Date','Submitted by','Category','Contribution'], safetyRows, 'No Flight Safety contributions found.')}
       </div>
 
       <div class="card rep-tool-card">
         <div class="eyebrow">INNOVATION</div>
         <h3 style="margin:.25rem 0 12px">Innovation contributions</h3>
-        ${table(['Date','Submitted by','Idea','Detail'], innovationRows, 'No Innovation contributions for this team.')}
+        ${table(global ? ['Date','Submitted by','Team','Idea','Detail'] : ['Date','Submitted by','Idea','Detail'], innovationRows, 'No Innovation contributions found.')}
       </div>
 
       <div class="card rep-tool-card">
         <div class="eyebrow">REWARDS</div>
         <h3 style="margin:.25rem 0 12px">Recognition / rewards</h3>
-        ${table(['Date','Submitted by','Recognised person','Reason'], rewardRows, 'No Recognition / Reward contributions for this team.')}
+        ${table(global ? ['Date','Submitted by','Team','Recognised person','Reason'] : ['Date','Submitted by','Recognised person','Reason'], rewardRows, 'No Recognition / Reward contributions found.')}
       </div>
     `;
   }
@@ -1207,7 +1236,9 @@ if (!READY) {
         main.appendChild(root);
       } else {
         const data = await loadTeamData(teamId);
-        const adminData = mode === 'admin' && ctx.appUser?.role === 'admin' ? await loadAccessAdminData() : null;
+        const isGlobalAdmin = mode === 'admin' && ctx.appUser?.role === 'admin';
+        const adminData = isGlobalAdmin ? await loadAccessAdminData() : null;
+        const contributionData = isGlobalAdmin ? await loadGlobalContributionData() : data;
         const selectedTeam = teams.find(t => t.id === teamId);
 
         root.innerHTML = `
@@ -1229,7 +1260,7 @@ if (!READY) {
           </div>
           ${renderChallengeSection(data, mode === 'admin')}
           ${renderEntrySection(data, false)}
-          ${renderContributionQueues(data)}
+          ${renderContributionQueues(contributionData, teams, isGlobalAdmin)}
           ${renderPointsSection(data, mode === 'admin')}
           ${mode === 'admin' ? renderProfileManagementSection(data, selectedTeam?.name || 'Team') : ''}
           ${adminData ? renderAccessAdminSection(ctx, teams, adminData) : ''}
