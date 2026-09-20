@@ -1,4 +1,4 @@
-const KUDOS_REP_TOOLS_VERSION = '2026-09-20.1';
+const KUDOS_REP_TOOLS_VERSION = '2026-09-20.2';
 
 const CFG = window.KUDOS_CONFIG || {};
 const SUPABASE_KEY = CFG.SUPABASE_PUBLISHABLE_KEY || CFG.SUPABASE_ANON_KEY || '';
@@ -249,10 +249,10 @@ if (!READY) {
       #kudos-rep-tools .rep-tool-muted{opacity:.72}
       #kudos-rep-tools .rep-tool-danger{background:#8d1f1f;color:#fff;border-color:#8d1f1f}
       #kudos-rep-tools .rep-tool-danger:hover{filter:brightness(.95)}
-      #kudos-rep-tools .rep-tool-form{display:grid;grid-template-columns:1.2fr .7fr 2fr auto;gap:10px;align-items:end}
+      #kudos-rep-tools .rep-tool-form{display:grid;grid-template-columns:1.2fr .7fr 2fr auto;gap:10px;align-items:end}\n      #kudos-rep-tools .rep-tool-form.admin-adjustment-form{grid-template-columns:1.2fr .8fr .7fr 2fr auto}
       #kudos-rep-tools .rep-tool-form .field{margin:0}
       #kudos-rep-tools .rep-tool-status{margin-top:10px}
-      #kudos-rep-tools .adjustment-negative{font-weight:800}
+      #kudos-rep-tools .adjustment-negative,#kudos-rep-tools .adjustment-positive{font-weight:800}
       #kudos-rep-tools .admin-access-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:14px 0}
       #kudos-rep-tools .admin-access-metric{padding:16px;border-radius:14px;background:rgba(12,35,56,.05)}
       #kudos-rep-tools .admin-access-metric b{display:block;font-size:1.7rem;line-height:1}
@@ -343,7 +343,7 @@ if (!READY) {
     `;
   }
 
-  function renderPointsSection(data) {
+  function renderPointsSection(data, canAdd=false) {
     const scoreMap = Object.fromEntries(data.scores.map(s => [s.profile_id, s]));
     const profileOptions = data.profiles.map(p => {
       const score = scoreMap[p.id];
@@ -353,21 +353,36 @@ if (!READY) {
 
     const adjustmentRows = data.adjustments.map(a => {
       const p = data.profiles.find(x => x.id === a.profile_id);
+      const delta = Number(a.points_delta || 0);
+      const displayDelta = delta > 0 ? `+${fmt(delta)}` : fmt(delta);
       return `
         <tr>
           <td>${esc(p?.name || 'Profile')}</td>
-          <td class="num adjustment-negative">${fmt(a.points_delta)}</td>
+          <td class="num ${delta > 0 ? 'adjustment-positive' : 'adjustment-negative'}">${displayDelta}</td>
           <td>${esc(a.reason)}</td>
           <td>${esc(String(a.created_at || '').replace('T', ' ').slice(0, 16))}</td>
         </tr>
       `;
     }).join('');
 
+    const actionField = canAdd
+      ? `<div class="field">
+          <label>Adjustment</label>
+          <select name="action" required>
+            <option value="">Choose…</option>
+            <option value="add">Add points</option>
+            <option value="deduct">Deduct points</option>
+          </select>
+        </div>`
+      : '<input type="hidden" name="action" value="deduct">';
+
     return `
-      <div class="section-title"><h2>KUDOS point adjustments</h2><p>Audited deductions only</p></div>
+      <div class="section-title"><h2>KUDOS point adjustments</h2><p>${canAdd ? 'Audited additions and deductions' : 'Audited deductions only'}</p></div>
       <div class="card rep-tool-card">
-        <div class="notice">Use this only when points need to be removed without deleting the underlying contribution. The deduction is permanent, reasoned and recorded in the audit log.</div>
-        <form id="kudos-point-adjustment-form" class="rep-tool-form" style="margin-top:14px">
+        <div class="notice">${canAdd
+          ? 'Admins can add or deduct KUDOS points when a manual correction or award is required. Every adjustment requires a reason and is retained in the audit history.'
+          : 'Performance Reps can deduct points for their own team when a correction is required. Additions are restricted to Administrators.'}</div>
+        <form id="kudos-point-adjustment-form" class="rep-tool-form ${canAdd ? 'admin-adjustment-form' : ''}" style="margin-top:14px">
           <div class="field">
             <label>Person</label>
             <select name="profile_id" required>
@@ -375,28 +390,28 @@ if (!READY) {
               ${profileOptions}
             </select>
           </div>
+          ${actionField}
           <div class="field">
-            <label>Points to remove</label>
+            <label>Points</label>
             <input name="points" type="number" min="0.01" step="0.01" required placeholder="e.g. 20">
           </div>
           <div class="field">
             <label>Reason</label>
-            <input name="reason" minlength="3" maxlength="500" required placeholder="Why are these points being removed?">
+            <input name="reason" minlength="3" maxlength="500" required placeholder="Why is this adjustment being made?">
           </div>
-          <button class="btn danger rep-tool-danger" type="submit">Remove points</button>
+          <button class="btn ${canAdd ? 'navy' : 'danger rep-tool-danger'}" type="submit">${canAdd ? 'Apply adjustment' : 'Remove points'}</button>
         </form>
         <div id="kudos-rep-tool-status" class="rep-tool-status"></div>
-        <div class="section-title" style="margin-top:20px"><h2>Recent deductions</h2><p>${data.adjustments.length} shown</p></div>
+        <div class="section-title" style="margin-top:20px"><h2>Recent adjustments</h2><p>${data.adjustments.length} shown</p></div>
         <div class="table-wrap">
           <table class="rep-tool-table">
             <thead><tr><th>Person</th><th>Points</th><th>Reason</th><th>Date</th></tr></thead>
-            <tbody>${adjustmentRows || '<tr><td colspan="4"><div class="empty compact-empty">No point deductions recorded for this team.</div></td></tr>'}</tbody>
+            <tbody>${adjustmentRows || '<tr><td colspan="4"><div class="empty compact-empty">No point adjustments recorded for this team.</div></td></tr>'}</tbody>
           </table>
         </div>
       </div>
     `;
   }
-
 
   function renderProfileManagementSection(data, selectedTeamName) {
     const scoreMap = Object.fromEntries(data.scores.map(s => [s.profile_id, s]));
@@ -586,11 +601,16 @@ if (!READY) {
   async function submitPointAdjustment(form, ctx, teamId, data) {
     const fd = new FormData(form);
     const profileId = String(fd.get('profile_id') || '');
+    const action = String(fd.get('action') || 'deduct');
     const points = Number(fd.get('points') || 0);
     const reason = String(fd.get('reason') || '').trim();
 
-    if (!profileId || !Number.isFinite(points) || points <= 0 || reason.length < 3) {
-      throw new Error('Choose a person, enter a positive number of points and provide a reason.');
+    if (!profileId || !['add','deduct'].includes(action) || !Number.isFinite(points) || points <= 0 || reason.length < 3) {
+      throw new Error('Choose a person and adjustment type, enter a positive number of points and provide a reason.');
+    }
+
+    if (action === 'add' && ctx.appUser?.role !== 'admin') {
+      throw new Error('Only Administrators can add KUDOS points.');
     }
 
     const profile = data.profiles.find(p => p.id === profileId);
@@ -599,11 +619,20 @@ if (!READY) {
     }
 
     const currentScore = Number(data.scores.find(s => s.profile_id === profileId)?.kudos_score || 0);
-    if (points > currentScore) {
-      throw new Error(`You cannot remove ${fmt(points)} points because ${profile.name} currently has ${fmt(currentScore)} KUDOS.`);
+    if (action === 'deduct' && points > currentScore) {
+      throw new Error(`You cannot deduct ${fmt(points)} points because ${profile.name} currently has ${fmt(currentScore)} KUDOS.`);
     }
 
-    const ok = window.confirm(`Remove ${fmt(points)} KUDOS points from ${profile.name}?\n\nCurrent score: ${fmt(currentScore)}\nReason: ${reason}\n\nThis action will be recorded in the audit log.`);
+    const delta = action === 'add' ? Math.abs(points) : -Math.abs(points);
+    const verb = action === 'add' ? 'Add' : 'Deduct';
+    const resultingScore = Math.max(currentScore + delta, 0);
+
+    const ok = window.confirm(
+      `${verb} ${fmt(points)} KUDOS points ${action === 'add' ? 'to' : 'from'} ${profile.name}?\n\n` +
+      `Current score: ${fmt(currentScore)}\n` +
+      `Resulting score: ${fmt(resultingScore)}\n` +
+      `Reason: ${reason}\n\nThis adjustment will be recorded in the audit history.`
+    );
     if (!ok) return;
 
     const { data: inserted, error } = await db
@@ -611,14 +640,14 @@ if (!READY) {
       .insert({
         profile_id: profileId,
         team_id: teamId,
-        points_delta: -Math.abs(points),
+        points_delta: delta,
         reason,
         created_by: ctx.user.id
       })
       .select('id');
 
     if (error) throw error;
-    if (!inserted?.length) throw new Error('The deduction was not recorded.');
+    if (!inserted?.length) throw new Error('The adjustment was not recorded.');
     window.location.reload();
   }
 
@@ -1051,7 +1080,7 @@ if (!READY) {
           </div>
           ${renderChallengeSection(data, mode === 'admin')}
           ${renderEntrySection(data, false)}
-          ${renderPointsSection(data)}
+          ${renderPointsSection(data, mode === 'admin')}
           ${mode === 'admin' ? renderProfileManagementSection(data, selectedTeam?.name || 'Team') : ''}
           ${adminData ? renderAccessAdminSection(ctx, teams, adminData) : ''}
         `;
@@ -1117,11 +1146,11 @@ if (!READY) {
           const button = e.target.querySelector('button[type="submit"]');
           try {
             if (button) button.disabled = true;
-            setStatus('Saving deduction…');
+            setStatus('Saving adjustment…');
             await submitPointAdjustment(e.target, ctx, teamId, data);
           } catch (err) {
             if (button) button.disabled = false;
-            setStatus(`Could not remove points: ${err.message || err}`, true);
+            setStatus(`Could not save adjustment: ${err.message || err}`, true);
           }
         });
 
