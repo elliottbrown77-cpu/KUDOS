@@ -1,11 +1,16 @@
-const CACHE = 'kudos-v11-mobile-nav-safe';
+const CACHE = 'kudos-v12-pwa-install';
 const STATIC_ASSETS = [
   './hero-merlin.png',
   './chf-crest.png',
   './845-crest.png',
   './846-crest.png',
   './847-crest.png',
-  './manifest.webmanifest'
+  './manifest.webmanifest',
+  './kudos-icon-192.png',
+  './kudos-icon-512.png',
+  './apple-touch-icon.png',
+  './kudos-icon.svg',
+  './kudos-header.svg'
 ];
 
 self.addEventListener('install', event => {
