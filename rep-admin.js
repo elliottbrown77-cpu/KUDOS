@@ -1025,7 +1025,23 @@ if (!READY) {
         if (button) button.disabled = true;
         const {error} = await db.from('contribution_email_routes').upsert(rows, {onConflict:'contribution_type'});
         if (error) throw error;
-        if (status) status.innerHTML = '<div class="notice success">Routing saved.</div>';
+
+        const {data:{session}} = await db.auth.getSession();
+        if (!session?.access_token) throw new Error('Admin session is not available.');
+
+        const mirror = await fetch('/api/contribution-routing', {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            'authorization': `Bearer ${session.access_token}`
+          },
+          body: JSON.stringify({
+            routes: Object.fromEntries(rows.map(r => [r.contribution_type, r.recipients]))
+          })
+        });
+        if (!mirror.ok) throw new Error((await mirror.text()) || 'Could not activate routing.');
+
+        if (status) status.innerHTML = '<div class="notice success">Routing saved and activated.</div>';
       } catch (err) {
         if (status) status.innerHTML = `<div class="notice">Could not save routing: ${esc(err.message || err)}</div>`;
       } finally {
