@@ -1,4 +1,4 @@
-const KUDOS_REP_TOOLS_VERSION = '2026-09-20.2';
+const KUDOS_REP_TOOLS_VERSION = '2026-09-20.3';
 
 const CFG = window.KUDOS_CONFIG || {};
 const SUPABASE_KEY = CFG.SUPABASE_PUBLISHABLE_KEY || CFG.SUPABASE_ANON_KEY || '';
@@ -343,6 +343,98 @@ if (!READY) {
     `;
   }
 
+  function contributionDate(x) {
+    return x.entry_date || String(x.created_at || '').slice(0, 10) || '—';
+  }
+
+  function renderContributionQueues(data) {
+    const profileMap = Object.fromEntries(data.profiles.map(p => [p.id, p]));
+
+    const safetyRows = [...data.entries.safety]
+      .sort((a,b)=>String(b.created_at||b.entry_date||'').localeCompare(String(a.created_at||a.entry_date||'')))
+      .map(x => `<tr>
+        <td>${esc(contributionDate(x))}</td>
+        <td><strong>${esc(profileMap[x.profile_id]?.name || 'Profile')}</strong></td>
+        <td>${esc(x.category || 'Flight Safety')}</td>
+        <td class="detail">${esc(x.description || '')}${x.external_reference ? `<div class="help">Ref: ${esc(x.external_reference)}</div>` : ''}</td>
+      </tr>`).join('');
+
+    const innovationRows = [...data.entries.innovation]
+      .sort((a,b)=>String(b.created_at||b.entry_date||'').localeCompare(String(a.created_at||a.entry_date||'')))
+      .map(x => `<tr>
+        <td>${esc(contributionDate(x))}</td>
+        <td><strong>${esc(profileMap[x.profile_id]?.name || 'Profile')}</strong></td>
+        <td>${esc(x.title || 'Innovation')}</td>
+        <td class="detail">${esc(x.description || '')}</td>
+      </tr>`).join('');
+
+    const rewardRows = [...data.entries.recognition]
+      .sort((a,b)=>String(b.created_at||b.entry_date||'').localeCompare(String(a.created_at||a.entry_date||'')))
+      .map(x => `<tr>
+        <td>${esc(contributionDate(x))}</td>
+        <td><strong>${esc(profileMap[x.submitter_profile_id]?.name || 'Profile')}</strong></td>
+        <td>${esc(x.nominated_person || 'Not recorded')}</td>
+        <td class="detail">${esc(x.reason || '')}</td>
+      </tr>`).join('');
+
+    const table = (headers, rows, empty) => `
+      <div class="table-wrap">
+        <table class="rep-tool-table">
+          <thead><tr>${headers.map(h=>`<th>${esc(h)}</th>`).join('')}</tr></thead>
+          <tbody>${rows || `<tr><td colspan="${headers.length}"><div class="empty compact-empty">${esc(empty)}</div></td></tr>`}</tbody>
+        </table>
+      </div>`;
+
+    return `
+      <div class="section-title"><h2>Contribution areas</h2><p>Team-scoped Safety, Innovation and Rewards</p></div>
+
+      <div class="card rep-tool-card">
+        <div class="eyebrow">FLIGHT SAFETY</div>
+        <h3 style="margin:.25rem 0 12px">Safety contributions</h3>
+        ${table(['Date','Submitted by','Category','Contribution'], safetyRows, 'No Flight Safety contributions for this team.')}
+      </div>
+
+      <div class="card rep-tool-card">
+        <div class="eyebrow">INNOVATION</div>
+        <h3 style="margin:.25rem 0 12px">Innovation contributions</h3>
+        ${table(['Date','Submitted by','Idea','Detail'], innovationRows, 'No Innovation contributions for this team.')}
+      </div>
+
+      <div class="card rep-tool-card">
+        <div class="eyebrow">REWARDS</div>
+        <h3 style="margin:.25rem 0 12px">Recognition / rewards</h3>
+        ${table(['Date','Submitted by','Recognised person','Reason'], rewardRows, 'No Recognition / Reward contributions for this team.')}
+      </div>
+    `;
+  }
+
+  function renderEmailRoutingSection(data) {
+    const routeMap = Object.fromEntries((data.routes || []).map(r => [r.contribution_type, r]));
+    const field = (type, label, help) => {
+      const recipients = routeMap[type]?.recipients || [];
+      return `
+        <div class="field">
+          <label>${esc(label)}</label>
+          <textarea name="${esc(type)}" rows="3" placeholder="name@example.com, team@example.com">${esc(recipients.join(', '))}</textarea>
+          <div class="help">${esc(help)}</div>
+        </div>`;
+    };
+
+    return `
+      <div class="section-title"><h2>Contribution email routing</h2><p>Admin only • manage recipient addresses</p></div>
+      <div class="card rep-tool-card">
+        <div class="notice">Enter one or more email addresses separated by commas or new lines. These are the routing addresses for each contribution area.</div>
+        <form id="kudos-contribution-routing-form" style="margin-top:14px">
+          ${field('safety','Flight Safety recipients','Receives Flight Safety contribution notifications.')}
+          ${field('innovation','Innovation recipients','Receives Innovation contribution notifications.')}
+          ${field('rewards','Rewards / Recognition recipients','Receives Recognition and reward contribution notifications.')}
+          <button class="btn navy" type="submit">Save email routing</button>
+        </form>
+        <div id="kudos-routing-status" class="rep-tool-status"></div>
+      </div>
+    `;
+  }
+
   function renderPointsSection(data, canAdd=false) {
     const scoreMap = Object.fromEntries(data.scores.map(s => [s.profile_id, s]));
     const profileOptions = data.profiles.map(p => {
@@ -660,19 +752,21 @@ if (!READY) {
   };
 
   async function loadAccessAdminData() {
-    const [directoryRes, accessRes, pendingRes, auditRes] = await Promise.all([
+    const [directoryRes, accessRes, pendingRes, auditRes, routesRes] = await Promise.all([
       db.from('access_directory').select('*').order('email'),
       db.from('app_users').select('*'),
       db.from('pending_access_invites').select('*').order('invited_at', {ascending:false}),
-      db.from('access_role_audit').select('*').order('changed_at', {ascending:false}).limit(50)
+      db.from('access_role_audit').select('*').order('changed_at', {ascending:false}).limit(50),
+      db.from('contribution_email_routes').select('*').order('contribution_type')
     ]);
-    const err = [directoryRes, accessRes, pendingRes, auditRes].find(r => r.error)?.error;
+    const err = [directoryRes, accessRes, pendingRes, auditRes, routesRes].find(r => r.error)?.error;
     if (err) throw err;
     return {
       directory: directoryRes.data || [],
       access: accessRes.data || [],
       pending: pendingRes.data || [],
-      audit: auditRes.data || []
+      audit: auditRes.data || [],
+      routes: routesRes.data || []
     };
   }
 
@@ -765,6 +859,8 @@ if (!READY) {
         </form>
         <div id="kudos-access-status" class="rep-tool-status"></div>
       </div>
+
+      ${renderEmailRoutingSection(data)}
 
       <div class="section-title"><h2>Access accounts</h2><p>Grant, change or revoke KUDOS management access</p></div>
       <div class="card rep-tool-card">
@@ -899,6 +995,43 @@ if (!READY) {
     };
     inviteRole?.addEventListener('change', syncInviteTeam);
     syncInviteTeam();
+
+    document.getElementById('kudos-contribution-routing-form')?.addEventListener('submit', async e => {
+      e.preventDefault();
+      const button = e.target.querySelector('button[type="submit"]');
+      const status = document.getElementById('kudos-routing-status');
+      const fd = new FormData(e.target);
+      const parseEmails = value => [...new Set(String(value || '')
+        .split(/[\n,;]+/)
+        .map(x => x.trim().toLowerCase())
+        .filter(Boolean))];
+
+      const rows = ['safety','innovation','rewards'].map(type => ({
+        contribution_type: type,
+        recipients: parseEmails(fd.get(type)),
+        updated_at: new Date().toISOString(),
+        updated_by: ctx.user.id
+      }));
+
+      const invalid = rows.flatMap(r => r.recipients)
+        .filter(email => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email));
+
+      if (invalid.length) {
+        if (status) status.innerHTML = `<div class="notice">Check these email addresses: ${esc(invalid.join(', '))}</div>`;
+        return;
+      }
+
+      try {
+        if (button) button.disabled = true;
+        const {error} = await db.from('contribution_email_routes').upsert(rows, {onConflict:'contribution_type'});
+        if (error) throw error;
+        if (status) status.innerHTML = '<div class="notice success">Routing saved.</div>';
+      } catch (err) {
+        if (status) status.innerHTML = `<div class="notice">Could not save routing: ${esc(err.message || err)}</div>`;
+      } finally {
+        if (button) button.disabled = false;
+      }
+    });
 
     root.querySelectorAll('[data-access-role]').forEach(sel => {
       const userId = sel.dataset.accessRole;
@@ -1080,6 +1213,7 @@ if (!READY) {
           </div>
           ${renderChallengeSection(data, mode === 'admin')}
           ${renderEntrySection(data, false)}
+          ${renderContributionQueues(data)}
           ${renderPointsSection(data, mode === 'admin')}
           ${mode === 'admin' ? renderProfileManagementSection(data, selectedTeam?.name || 'Team') : ''}
           ${adminData ? renderAccessAdminSection(ctx, teams, adminData) : ''}
