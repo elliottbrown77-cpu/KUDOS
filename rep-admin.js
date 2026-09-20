@@ -1,4 +1,4 @@
-const KUDOS_REP_TOOLS_VERSION = '2026-09-16.5';
+const KUDOS_REP_TOOLS_VERSION = '2026-09-20.1';
 
 const CFG = window.KUDOS_CONFIG || {};
 const SUPABASE_KEY = CFG.SUPABASE_PUBLISHABLE_KEY || CFG.SUPABASE_ANON_KEY || '';
@@ -395,6 +395,94 @@ if (!READY) {
         </div>
       </div>
     `;
+  }
+
+
+  function renderProfileManagementSection(data, selectedTeamName) {
+    const scoreMap = Object.fromEntries(data.scores.map(s => [s.profile_id, s]));
+    const rows = [...data.profiles]
+      .sort((a,b) => String(a.name||'').localeCompare(String(b.name||''), 'en-GB', {sensitivity:'base'}))
+      .map(p => `
+        <tr>
+          <td><strong>${esc(p.name)}</strong></td>
+          <td>${esc(selectedTeamName || 'Team')}</td>
+          <td class="num">${fmt(scoreMap[p.id]?.kudos_score || 0)}</td>
+          <td class="num">
+            <button class="btn danger compact rep-tool-danger"
+              data-admin-delete-profile="${esc(p.id)}"
+              data-profile-name="${esc(p.name)}">Delete profile</button>
+          </td>
+        </tr>
+      `).join('');
+
+    return `
+      <div class="section-title"><h2>Profile management</h2><p>Admin only • permanent profile deletion</p></div>
+      <div class="card rep-tool-card">
+        <div class="notice">Deleting a profile permanently removes that person's challenge progress, innovation and Flight Safety submissions, submitted recognition and point adjustments. Recognition of that person is retained by name. Rep/Admin sign-in access is managed separately below.</div>
+        <div class="table-wrap" style="margin-top:12px">
+          <table class="rep-tool-table">
+            <thead><tr><th>Name</th><th>Team</th><th>KUDOS</th><th></th></tr></thead>
+            <tbody>${rows || '<tr><td colspan="4"><div class="empty compact-empty">No active profiles in this team.</div></td></tr>'}</tbody>
+          </table>
+        </div>
+      </div>
+    `;
+  }
+
+  async function deleteProfile(profileId, profileName) {
+    const ctx = await getContext();
+    if (ctx.appUser?.role !== 'admin') throw new Error('Administrator permission is required.');
+
+    const [
+      progressRes,
+      recognitionSubmittedRes,
+      recognitionReceivedRes,
+      innovationRes,
+      safetyRes,
+      adjustmentRes
+    ] = await Promise.all([
+      db.from('progress_entries').select('id', {count:'exact', head:true}).eq('profile_id', profileId),
+      db.from('recognition_entries').select('id', {count:'exact', head:true}).eq('submitter_profile_id', profileId),
+      db.from('recognition_entries').select('id', {count:'exact', head:true}).eq('recognised_profile_id', profileId),
+      db.from('innovation_entries').select('id', {count:'exact', head:true}).eq('profile_id', profileId),
+      db.from('safety_entries').select('id', {count:'exact', head:true}).eq('profile_id', profileId),
+      db.from('kudos_point_adjustments').select('id', {count:'exact', head:true}).eq('profile_id', profileId)
+    ]);
+
+    const err = [progressRes, recognitionSubmittedRes, recognitionReceivedRes, innovationRes, safetyRes, adjustmentRes]
+      .find(r => r.error)?.error;
+    if (err) throw err;
+
+    const submitted =
+      Number(progressRes.count || 0) +
+      Number(recognitionSubmittedRes.count || 0) +
+      Number(innovationRes.count || 0) +
+      Number(safetyRes.count || 0);
+
+    const received = Number(recognitionReceivedRes.count || 0);
+    const adjustments = Number(adjustmentRes.count || 0);
+    const isCurrentProfile = (localStorage.getItem('kudos_profile') || '') === profileId;
+
+    const ok = window.confirm(
+      `Permanently delete the KUDOS profile for "${profileName}"?\n\n` +
+      `${submitted} submitted contribution${submitted === 1 ? '' : 's'} and ${adjustments} point adjustment${adjustments === 1 ? '' : 's'} will be deleted.\n` +
+      `${received} recognition entr${received === 1 ? 'y' : 'ies'} naming this person will be retained, but the profile link will be removed.\n` +
+      (isCurrentProfile ? '\nThis is the profile currently selected on this device; KUDOS will ask you to choose another profile after deletion.\n' : '') +
+      '\nThis cannot be undone.'
+    );
+    if (!ok) return;
+
+    const {data, error} = await db
+      .from('profiles')
+      .delete()
+      .eq('id', profileId)
+      .select('id');
+
+    if (error) throw error;
+    if (!data?.length) throw new Error('No profile was deleted.');
+
+    if (isCurrentProfile) localStorage.removeItem('kudos_profile');
+    window.location.reload();
   }
 
   function setStatus(message, isError = false) {
@@ -964,6 +1052,7 @@ if (!READY) {
           ${renderChallengeSection(data, mode === 'admin')}
           ${renderEntrySection(data, false)}
           ${renderPointsSection(data)}
+          ${mode === 'admin' ? renderProfileManagementSection(data, selectedTeam?.name || 'Team') : ''}
           ${adminData ? renderAccessAdminSection(ctx, teams, adminData) : ''}
         `;
         main.appendChild(root);
@@ -1006,6 +1095,19 @@ if (!READY) {
             } catch (err) {
               btn.disabled = false;
               setStatus(`Could not remove entry: ${err.message || err}`, true);
+            }
+          });
+        });
+
+
+        root.querySelectorAll('[data-admin-delete-profile]').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            try {
+              btn.disabled = true;
+              await deleteProfile(btn.dataset.adminDeleteProfile, btn.dataset.profileName || 'profile');
+            } catch (err) {
+              btn.disabled = false;
+              setStatus(`Could not delete profile: ${err.message || err}`, true);
             }
           });
         });
