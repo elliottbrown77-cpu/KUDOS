@@ -1,14 +1,14 @@
-const CACHE = 'kudos-v12-pwa-install';
+const CACHE = 'kudos-v13-icon-refresh';
 const STATIC_ASSETS = [
   './hero-merlin.png',
   './chf-crest.png',
   './845-crest.png',
   './846-crest.png',
   './847-crest.png',
-  './manifest.webmanifest',
-  './kudos-icon-192.png',
-  './kudos-icon-512.png',
-  './apple-touch-icon.png',
+  './manifest.webmanifest?v=3',
+  './kudos-app-192-v2.png',
+  './kudos-app-512-v2.png',
+  './apple-touch-icon-v2.png',
   './kudos-icon.svg',
   './kudos-header.svg'
 ];
@@ -41,7 +41,8 @@ self.addEventListener('fetch', event => {
     path.endsWith('/index.html') ||
     path.endsWith('/app.js') ||
     path.endsWith('/styles.css') ||
-    path.endsWith('/config.js');
+    path.endsWith('/config.js') ||
+    path.endsWith('/manifest.webmanifest');
 
   if (isAppCode) {
     event.respondWith(
