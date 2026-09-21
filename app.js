@@ -2,6 +2,7 @@ const CFG = window.KUDOS_CONFIG || {};
 const SUPABASE_KEY = CFG.SUPABASE_PUBLISHABLE_KEY || CFG.SUPABASE_ANON_KEY || '';
 const SUPABASE_READY = !!(CFG.SUPABASE_URL && SUPABASE_KEY && window.supabase);
 const supabase = SUPABASE_READY ? window.supabase.createClient(CFG.SUPABASE_URL, SUPABASE_KEY) : null;
+window.KUDOS_SUPABASE = supabase;
 
 const PSFS = [
   'Fatigue','Stress','Time Pressure','Cognitive Workload','Physical Conditioning',
