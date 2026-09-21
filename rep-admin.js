@@ -329,24 +329,37 @@ if (!READY) {
       const teamName = teamMap[teamId] || 'Team';
       return `
       <tr>
+        <td><input type="checkbox" class="moderation-entry-check" data-entry-id="${esc(r.id)}" data-entry-type="${esc(r.type)}" aria-label="Select entry"></td>
         <td><strong>${esc(r.label)}</strong></td>
         <td>${esc(r.person)}</td>
         ${global ? `<td>${esc(teamName)}</td>` : ''}
         <td>${esc(r.date)}</td>
         <td><strong>${esc(r.title)}</strong></td>
         <td class="detail">${esc(r.detail)}</td>
-        <td class="num"><button class="btn danger compact rep-tool-danger" data-rep-delete-entry="${esc(r.id)}" data-entry-type="${esc(r.type)}">Remove</button></td>
+        <td class="num">
+          <div class="rep-tool-actions" style="justify-content:flex-end">
+            <button class="btn ghost compact" data-rep-edit-entry="${esc(r.id)}" data-entry-type="${esc(r.type)}">Edit</button>
+            <button class="btn danger compact rep-tool-danger" data-rep-delete-entry="${esc(r.id)}" data-entry-type="${esc(r.type)}">Remove</button>
+          </div>
+        </td>
       </tr>`;
     }).join('');
 
     const headers = global
-      ? ['Type','Submitted by','Team','Date','Entry','Detail','']
-      : ['Type','Submitted by','Date','Entry','Detail',''];
+      ? ['','Type','Submitted by','Team','Date','Entry','Detail','']
+      : ['','Type','Submitted by','Date','Entry','Detail',''];
 
     return `
-      <div class="section-title"><h2>Entry moderation</h2><p>${global ? 'Remove erroneous entries across all teams' : 'Remove erroneous entries from your team'}</p></div>
+      <div class="section-title"><h2>Entry moderation</h2><p>${global ? 'Edit or remove entries across all teams' : 'Edit or remove entries from your team'}</p></div>
       <div class="card rep-tool-card admin-scroll-card">
-        <div class="notice">${global ? 'Showing entries from all teams. ' : ''}Removing an entry immediately recalculates challenge progress and KUDOS scores. Any email notification already sent cannot be recalled.</div>
+        <div class="notice">${global ? 'Showing entries from all teams. ' : ''}Edits and removals immediately recalculate challenge progress and KUDOS scores. Any email notification already sent cannot be recalled.</div>
+        <div class="rep-tool-actions" style="margin-top:12px;align-items:center">
+          <label class="btn ghost compact" style="display:inline-flex;gap:7px;align-items:center">
+            <input type="checkbox" id="moderation-select-all"> Select all
+          </label>
+          <button class="btn danger compact rep-tool-danger" id="moderation-delete-selected" disabled>Delete selected</button>
+          <span class="help" id="moderation-selection-count">0 selected</span>
+        </div>
         <div class="table-wrap" style="margin-top:12px">
           <table class="rep-tool-table">
             <thead><tr>${headers.map(h=>`<th>${esc(h)}</th>`).join('')}</tr></thead>
