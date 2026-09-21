@@ -336,7 +336,7 @@ if (!READY) {
 
     return `
       <div class="section-title"><h2>Entry moderation</h2><p>Remove erroneous entries from your team</p></div>
-      <div class="card rep-tool-card">
+      <div class="card rep-tool-card admin-scroll-card">
         <div class="notice">Removing an entry immediately recalculates challenge progress and KUDOS scores. Any email notification already sent cannot be recalled.</div>
         <div class="table-wrap" style="margin-top:12px">
           <table class="rep-tool-table">
