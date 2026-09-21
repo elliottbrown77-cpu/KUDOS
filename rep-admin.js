@@ -1,4 +1,4 @@
-const KUDOS_REP_TOOLS_VERSION = '2026-09-21.3';
+const KUDOS_REP_TOOLS_VERSION = '2026-09-21.4';
 
 const CFG = window.KUDOS_CONFIG || {};
 const SUPABASE_KEY = CFG.SUPABASE_PUBLISHABLE_KEY || CFG.SUPABASE_ANON_KEY || '';
@@ -361,6 +361,19 @@ if (!READY) {
     };
   }
 
+  async function loadGlobalProfileData() {
+    const [profilesRes, scoresRes] = await Promise.all([
+      db.from('profiles').select('id,name,team_id,active').eq('active', true).order('name'),
+      db.from('profile_scores').select('profile_id,name,team_id,kudos_score,adjustment_points').order('name')
+    ]);
+    const err = [profilesRes, scoresRes].find(r => r.error)?.error;
+    if (err) throw err;
+    return {
+      profiles: profilesRes.data || [],
+      scores: scoresRes.data || []
+    };
+  }
+
   function contributionDate(x) {
     return x.entry_date || String(x.created_at || '').slice(0, 10) || '—';
   }
@@ -536,14 +549,15 @@ if (!READY) {
     `;
   }
 
-  function renderProfileManagementSection(data, selectedTeamName) {
+  function renderProfileManagementSection(data, teams=[]) {
     const scoreMap = Object.fromEntries(data.scores.map(s => [s.profile_id, s]));
+    const teamMap = Object.fromEntries(teams.map(t => [t.id, t.name]));
     const rows = [...data.profiles]
       .sort((a,b) => String(a.name||'').localeCompare(String(b.name||''), 'en-GB', {sensitivity:'base'}))
       .map(p => `
         <tr>
           <td><strong>${esc(p.name)}</strong></td>
-          <td>${esc(selectedTeamName || 'Team')}</td>
+          <td>${esc(teamMap[p.team_id] || 'Team')}</td>
           <td class="num">${fmt(scoreMap[p.id]?.kudos_score || 0)}</td>
           <td class="num">
             <button class="btn danger compact rep-tool-danger"
@@ -554,13 +568,13 @@ if (!READY) {
       `).join('');
 
     return `
-      <div class="section-title"><h2>Profile management</h2><p>Admin only • permanent profile deletion</p></div>
+      <div class="section-title"><h2>Profile management</h2><p>Admin only • all active profiles across KUDOS</p></div>
       <div class="card rep-tool-card">
-        <div class="notice">Deleting a profile permanently removes that person's challenge progress, innovation and Flight Safety submissions, submitted recognition and point adjustments. Recognition of that person is retained by name. Rep/Admin sign-in access is managed separately below.</div>
+        <div class="notice">Showing all ${data.profiles.length} active profiles across every team. Deleting a profile permanently removes that person's challenge progress, innovation and Flight Safety submissions, submitted recognition and point adjustments. Recognition of that person is retained by name. Rep/Admin sign-in access is managed separately below.</div>
         <div class="table-wrap" style="margin-top:12px">
           <table class="rep-tool-table">
             <thead><tr><th>Name</th><th>Team</th><th>KUDOS</th><th></th></tr></thead>
-            <tbody>${rows || '<tr><td colspan="4"><div class="empty compact-empty">No active profiles in this team.</div></td></tr>'}</tbody>
+            <tbody>${rows || '<tr><td colspan="4"><div class="empty compact-empty">No active profiles found.</div></td></tr>'}</tbody>
           </table>
         </div>
       </div>
@@ -1231,8 +1245,9 @@ if (!READY) {
       } else {
         const data = await loadTeamData(teamId);
         const isGlobalAdmin = mode === 'admin' && ctx.appUser?.role === 'admin';
-        const adminData = isGlobalAdmin ? await loadAccessAdminData() : null;
-        const contributionData = isGlobalAdmin ? await loadGlobalContributionData() : data;
+        const [adminData, contributionData, globalProfileData] = isGlobalAdmin
+          ? await Promise.all([loadAccessAdminData(), loadGlobalContributionData(), loadGlobalProfileData()])
+          : [null, data, null];
         const selectedTeam = teams.find(t => t.id === teamId);
 
         root.innerHTML = `
@@ -1256,7 +1271,7 @@ if (!READY) {
           ${renderEntrySection(data, false)}
           ${renderContributionQueues(contributionData, teams, isGlobalAdmin)}
           ${renderPointsSection(data, mode === 'admin')}
-          ${mode === 'admin' ? renderProfileManagementSection(data, selectedTeam?.name || 'Team') : ''}
+          ${mode === 'admin' ? renderProfileManagementSection(globalProfileData || data, teams) : ''}
           ${adminData ? renderAccessAdminSection(ctx, teams, adminData) : ''}
         `;
         main.appendChild(root);
