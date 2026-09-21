@@ -688,10 +688,21 @@ if (!READY) {
   }
 
   function refreshToolsInPlace(delay=120) {
-    const root = document.getElementById('kudos-rep-tools');
-    if (root) root.remove();
-    clearTimeout(scheduled);
-    scheduled = setTimeout(enhance, delay);
+    const run = async () => {
+      try {
+        if (typeof window.KUDOS_REFRESH === 'function') {
+          await window.KUDOS_REFRESH();
+        }
+      } catch (err) {
+        console.error('KUDOS main refresh after admin change failed', err);
+      } finally {
+        const root = document.getElementById('kudos-rep-tools');
+        if (root) root.remove();
+        clearTimeout(scheduled);
+        scheduled = setTimeout(enhance, delay);
+      }
+    };
+    run();
   }
 
   async function editChallenge(id, form) {
