@@ -298,6 +298,7 @@ if (!READY) {
         <td>${fmt(c.target)} ${esc(c.unit)}</td>
         <td class="num">
           <div class="rep-tool-actions" style="justify-content:flex-end">
+            ${isFullAdmin ? `<button class="btn ghost compact" data-admin-edit-challenge="${esc(c.id)}">Edit</button>` : ''}
             <button class="btn danger compact rep-tool-danger" data-rep-remove-challenge="${esc(c.id)}" data-title="${esc(c.title)}">Delete from this team</button>
             ${isFullAdmin && c.challenge_group_id ? `<button class="btn danger compact rep-tool-danger" data-admin-remove-challenge-group="${esc(c.challenge_group_id)}" data-title="${esc(c.title)}">Delete from all teams</button>` : ''}
           </div>
@@ -309,7 +310,7 @@ if (!READY) {
       <div class="section-title"><h2>Challenge management</h2><p>Permanent deletion • term-based challenge reset</p></div>
       <div class="card rep-tool-card">
         <div class="notice">${isFullAdmin
-          ? 'Delete from this team permanently removes that team copy. Delete from all teams permanently removes every copy in the shared challenge group. Challenge progress entries and PSF links are deleted with the challenge and scores/reports are recalculated.'
+          ? 'Admins can edit challenge details without losing existing entries. For shared challenges, you can apply an edit to the selected team only or to every team copy. Delete from this team permanently removes that team copy; Delete from all teams removes every copy in the shared challenge group.'
           : 'Deleting a challenge permanently removes it from your team. Challenge progress entries and PSF links are deleted with it and scores/reports are recalculated.'}</div>
         <div class="table-wrap" style="margin-top:12px">
           <table class="rep-tool-table">
@@ -690,6 +691,70 @@ if (!READY) {
     if (root) root.remove();
     clearTimeout(scheduled);
     scheduled = setTimeout(enhance, delay);
+  }
+
+  async function editChallenge(id) {
+    const ctx = await getContext();
+    if (ctx.appUser?.role !== 'admin') throw new Error('Administrator permission is required.');
+
+    const { data: challenge, error: loadError } = await db
+      .from('challenges')
+      .select('*')
+      .eq('id', id)
+      .single();
+    if (loadError) throw loadError;
+
+    const title = window.prompt('Challenge title:', String(challenge.title || ''));
+    if (title === null) return false;
+
+    const description = window.prompt('Description:', String(challenge.description || ''));
+    if (description === null) return false;
+
+    const targetRaw = window.prompt('Target:', String(challenge.target ?? ''));
+    if (targetRaw === null) return false;
+    const target = Number(targetRaw);
+    if (!Number.isFinite(target) || target <= 0) throw new Error('Target must be a number greater than zero.');
+
+    const unit = window.prompt('Unit:', String(challenge.unit || ''));
+    if (unit === null) return false;
+
+    const startDate = window.prompt('Start date (YYYY-MM-DD):', String(challenge.start_date || ''));
+    if (startDate === null) return false;
+
+    const endDate = window.prompt('End date (YYYY-MM-DD):', String(challenge.end_date || ''));
+    if (endDate === null) return false;
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
+      throw new Error('Start and end dates must use YYYY-MM-DD.');
+    }
+    if (endDate < startDate) throw new Error('End date cannot be before the start date.');
+
+    const updates = {
+      title: title.trim(),
+      description: description.trim(),
+      target,
+      unit: unit.trim(),
+      start_date: startDate,
+      end_date: endDate
+    };
+
+    let applyAll = false;
+    if (challenge.challenge_group_id) {
+      applyAll = window.confirm(
+        'Apply these changes to ALL team copies of this shared challenge?\n\nChoose OK for all teams, or Cancel to update only the currently selected team.'
+      );
+    }
+
+    let q = db.from('challenges').update(updates);
+    q = applyAll
+      ? q.eq('challenge_group_id', challenge.challenge_group_id)
+      : q.eq('id', id);
+
+    const { data, error } = await q.select('id');
+    if (error) throw error;
+    if (!data?.length) throw new Error('No challenge was updated.');
+
+    return true;
   }
 
   async function removeChallenge(id, title) {
@@ -1381,6 +1446,20 @@ if (!READY) {
           localStorage.setItem('kudos_rep_tools_team', e.target.value);
           document.getElementById('kudos-rep-tools')?.remove();
           schedule();
+        });
+
+        root.querySelectorAll('[data-admin-edit-challenge]').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            try {
+              btn.disabled = true;
+              const changed = await editChallenge(btn.dataset.adminEditChallenge);
+              if (changed) refreshToolsInPlace();
+              else btn.disabled = false;
+            } catch (err) {
+              btn.disabled = false;
+              setStatus(`Could not edit challenge: ${err.message || err}`, true);
+            }
+          });
         });
 
         root.querySelectorAll('[data-rep-remove-challenge]').forEach(btn => {
