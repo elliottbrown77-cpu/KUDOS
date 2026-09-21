@@ -1,4 +1,4 @@
-const KUDOS_REP_TOOLS_VERSION = '2026-09-21.1';
+const KUDOS_REP_TOOLS_VERSION = '2026-09-21.2';
 
 const CFG = window.KUDOS_CONFIG || {};
 const SUPABASE_KEY = CFG.SUPABASE_PUBLISHABLE_KEY || CFG.SUPABASE_ANON_KEY || '';
@@ -143,7 +143,7 @@ if (!READY) {
       db.from('profiles').select('id,name,team_id,active').eq('team_id', teamId).eq('active', true).order('name'),
       db.from('challenges').select('id,title,target,unit,source_type,start_date,end_date,active,team_id,challenge_group_id').eq('team_id', teamId).eq('active', true).order('start_date'),
       db.from('profile_scores').select('profile_id,name,team_id,kudos_score,adjustment_points').eq('team_id', teamId).order('name'),
-      db.from('kudos_point_adjustments').select('id,profile_id,team_id,points_delta,reason,created_at,created_by').eq('team_id', teamId).order('created_at', { ascending: false }).limit(50)
+      db.from('kudos_point_adjustments').select('id,profile_id,team_id,points_delta,reason,created_at,created_by').eq('team_id', teamId).order('created_at', { ascending: false })
     ]);
 
     const firstError = [profilesRes, challengesRes, scoresRes, adjustmentsRes].find(r => r.error)?.error;
@@ -157,10 +157,10 @@ if (!READY) {
 
     if (profileIds.length) {
       const [pRes, rRes, iRes, sRes] = await Promise.all([
-        db.from('progress_entries').select('*').in('profile_id', profileIds).order('created_at', { ascending: false }).limit(150),
-        db.from('recognition_entries').select('*').in('submitter_profile_id', profileIds).order('created_at', { ascending: false }).limit(150),
-        db.from('innovation_entries').select('*').in('profile_id', profileIds).order('created_at', { ascending: false }).limit(150),
-        db.from('safety_entries').select('*').in('profile_id', profileIds).order('created_at', { ascending: false }).limit(150)
+        db.from('progress_entries').select('*').in('profile_id', profileIds).order('created_at', { ascending: false }),
+        db.from('recognition_entries').select('*').in('submitter_profile_id', profileIds).order('created_at', { ascending: false }),
+        db.from('innovation_entries').select('*').in('profile_id', profileIds).order('created_at', { ascending: false }),
+        db.from('safety_entries').select('*').in('profile_id', profileIds).order('created_at', { ascending: false })
       ]);
       const entryError = [pRes, rRes, iRes, sRes].find(r => r.error)?.error;
       if (entryError) throw entryError;
@@ -229,8 +229,7 @@ if (!READY) {
     }));
 
     return rows
-      .sort((a, b) => String(b.date).localeCompare(String(a.date)))
-      .slice(0, 200);
+      .sort((a, b) => String(b.date).localeCompare(String(a.date)));
   }
 
   function styles() {
@@ -346,9 +345,9 @@ if (!READY) {
   async function loadGlobalContributionData() {
     const [profilesRes, safetyRes, innovationRes, rewardsRes] = await Promise.all([
       db.from('profiles').select('id,name,team_id').eq('active', true).order('name'),
-      db.from('safety_entries').select('*').order('created_at', {ascending:false}).limit(500),
-      db.from('innovation_entries').select('*').order('created_at', {ascending:false}).limit(500),
-      db.from('recognition_entries').select('*').order('created_at', {ascending:false}).limit(500)
+      db.from('safety_entries').select('*').order('created_at', {ascending:false}),
+      db.from('innovation_entries').select('*').order('created_at', {ascending:false}),
+      db.from('recognition_entries').select('*').order('created_at', {ascending:false})
     ]);
     const err = [profilesRes, safetyRes, innovationRes, rewardsRes].find(r => r.error)?.error;
     if (err) throw err;
@@ -785,7 +784,7 @@ if (!READY) {
       db.from('access_directory').select('*').order('email'),
       db.from('app_users').select('*'),
       db.from('pending_access_invites').select('*').order('invited_at', {ascending:false}),
-      db.from('access_role_audit').select('*').order('changed_at', {ascending:false}).limit(50),
+      db.from('access_role_audit').select('*').order('changed_at', {ascending:false}),
       db.from('contribution_email_routes').select('*').order('contribution_type')
     ]);
     const err = [directoryRes, accessRes, pendingRes, auditRes, routesRes].find(r => r.error)?.error;
