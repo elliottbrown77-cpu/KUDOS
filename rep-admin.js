@@ -458,33 +458,6 @@ if (!READY) {
     `;
   }
 
-  function renderEmailRoutingSection(data) {
-    const routeMap = Object.fromEntries((data.routes || []).map(r => [r.contribution_type, r]));
-    const field = (type, label, help) => {
-      const recipients = routeMap[type]?.recipients || [];
-      return `
-        <div class="field">
-          <label>${esc(label)}</label>
-          <textarea name="${esc(type)}" rows="3" placeholder="name@example.com, team@example.com">${esc(recipients.join(', '))}</textarea>
-          <div class="help">${esc(help)}</div>
-        </div>`;
-    };
-
-    return `
-      <div class="section-title"><h2>Contribution email routing</h2><p>Admin only • manage recipient addresses</p></div>
-      <div class="card rep-tool-card">
-        <div class="notice">Enter one or more email addresses separated by commas or new lines. These are the routing addresses for each contribution area.</div>
-        <form id="kudos-contribution-routing-form" style="margin-top:14px">
-          ${field('safety','Flight Safety recipients','Receives Flight Safety contribution notifications.')}
-          ${field('innovation','Innovation recipients','Receives Innovation contribution notifications.')}
-          ${field('rewards','Rewards / Recognition recipients','Receives Recognition and reward contribution notifications.')}
-          <button class="btn navy" type="submit">Save email routing</button>
-        </form>
-        <div id="kudos-routing-status" class="rep-tool-status"></div>
-      </div>
-    `;
-  }
-
   function renderPointsSection(data, canAdd=false) {
     const scoreMap = Object.fromEntries(data.scores.map(s => [s.profile_id, s]));
     const profileOptions = data.profiles.map(p => {
@@ -919,8 +892,6 @@ if (!READY) {
         <div id="kudos-access-status" class="rep-tool-status"></div>
       </div>
 
-      ${renderEmailRoutingSection(data)}
-
       <div class="section-title"><h2>Access accounts</h2><p>Grant, change or revoke KUDOS management access</p></div>
       <div class="card rep-tool-card">
         <div class="notice">Revoking access removes the KUDOS role but does not delete the person's authentication account. At least one KUDOS administrator is always retained by the database.</div>
@@ -1022,59 +993,6 @@ if (!READY) {
     };
     inviteRole?.addEventListener('change', syncInviteTeam);
     syncInviteTeam();
-
-    document.getElementById('kudos-contribution-routing-form')?.addEventListener('submit', async e => {
-      e.preventDefault();
-      const button = e.target.querySelector('button[type="submit"]');
-      const status = document.getElementById('kudos-routing-status');
-      const fd = new FormData(e.target);
-      const parseEmails = value => [...new Set(String(value || '')
-        .split(/[\n,;]+/)
-        .map(x => x.trim().toLowerCase())
-        .filter(Boolean))];
-
-      const rows = ['safety','innovation','rewards'].map(type => ({
-        contribution_type: type,
-        recipients: parseEmails(fd.get(type)),
-        updated_at: new Date().toISOString(),
-        updated_by: ctx.user.id
-      }));
-
-      const invalid = rows.flatMap(r => r.recipients)
-        .filter(email => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email));
-
-      if (invalid.length) {
-        if (status) status.innerHTML = `<div class="notice">Check these email addresses: ${esc(invalid.join(', '))}</div>`;
-        return;
-      }
-
-      try {
-        if (button) button.disabled = true;
-        const {error} = await db.from('contribution_email_routes').upsert(rows, {onConflict:'contribution_type'});
-        if (error) throw error;
-
-        const {data:{session}} = await db.auth.getSession();
-        if (!session?.access_token) throw new Error('Admin session is not available.');
-
-        const mirror = await fetch('/api/contribution-routing', {
-          method: 'POST',
-          headers: {
-            'content-type': 'application/json',
-            'authorization': `Bearer ${session.access_token}`
-          },
-          body: JSON.stringify({
-            routes: Object.fromEntries(rows.map(r => [r.contribution_type, r.recipients]))
-          })
-        });
-        if (!mirror.ok) throw new Error((await mirror.text()) || 'Could not activate routing.');
-
-        if (status) status.innerHTML = '<div class="notice success">Routing saved and activated.</div>';
-      } catch (err) {
-        if (status) status.innerHTML = `<div class="notice">Could not save routing: ${esc(err.message || err)}</div>`;
-      } finally {
-        if (button) button.disabled = false;
-      }
-    });
 
     root.querySelectorAll('[data-access-role]').forEach(sel => {
       const userId = sel.dataset.accessRole;
