@@ -771,8 +771,8 @@ if (!READY) {
         ${shared ? `<div class="field">
           <label>Apply changes to</label>
           <select name="scope">
+            <option value="all" selected>All teams using this shared challenge</option>
             <option value="team">Selected team only</option>
-            <option value="all">All teams using this shared challenge</option>
           </select>
         </div>` : '<input type="hidden" name="scope" value="team">'}
         <div class="rep-tool-actions">
