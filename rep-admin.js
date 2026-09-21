@@ -760,18 +760,23 @@ if (!READY) {
     refreshToolsInPlace();
   }
 
-  async function deleteEntry(type, id) {
-    const tables = {
+  function entryTable(type) {
+    return {
       progress: 'progress_entries',
       recognition: 'recognition_entries',
       innovation: 'innovation_entries',
       safety: 'safety_entries'
-    };
-    const table = tables[type];
+    }[type] || '';
+  }
+
+  async function deleteEntry(type, id, confirmFirst=true) {
+    const table = entryTable(type);
     if (!table) throw new Error('Unknown entry type.');
 
-    const ok = window.confirm('Remove this entry from KUDOS? Challenge progress and scores will be recalculated immediately.');
-    if (!ok) return;
+    if (confirmFirst) {
+      const ok = window.confirm('Remove this entry from KUDOS? Challenge progress and scores will be recalculated immediately.');
+      if (!ok) return false;
+    }
 
     const { data, error } = await db
       .from(table)
@@ -781,7 +786,113 @@ if (!READY) {
 
     if (error) throw error;
     if (!data?.length) throw new Error('No entry was removed. Check that it belongs to your team and that you have permission.');
-    window.location.reload();
+    return true;
+  }
+
+  async function deleteEntriesBulk(items) {
+    if (!items.length) return false;
+    const ok = window.confirm(
+      `Permanently remove ${items.length} selected entr${items.length === 1 ? 'y' : 'ies'} from KUDOS?\n\nChallenge progress and KUDOS scores will be recalculated immediately. This cannot be undone.`
+    );
+    if (!ok) return false;
+
+    const grouped = {};
+    items.forEach(item => {
+      (grouped[item.type] ||= []).push(item.id);
+    });
+
+    let removed = 0;
+    for (const [type, ids] of Object.entries(grouped)) {
+      const table = entryTable(type);
+      if (!table) continue;
+      const { data, error } = await db
+        .from(table)
+        .delete()
+        .in('id', ids)
+        .select('id');
+      if (error) throw error;
+      removed += data?.length || 0;
+    }
+
+    if (!removed) throw new Error('No selected entries were removed. Check your permissions.');
+    return true;
+  }
+
+  async function editEntry(type, id) {
+    const table = entryTable(type);
+    if (!table) throw new Error('Unknown entry type.');
+
+    const { data: row, error: loadError } = await db
+      .from(table)
+      .select('*')
+      .eq('id', id)
+      .single();
+    if (loadError) throw loadError;
+
+    let updates = {};
+
+    if (type === 'progress') {
+      const valueRaw = window.prompt('Progress value:', String(row.value ?? ''));
+      if (valueRaw === null) return false;
+      const value = Number(valueRaw);
+      if (!Number.isFinite(value) || value < 0) throw new Error('Progress value must be a valid number of zero or more.');
+
+      const date = window.prompt('Entry date (YYYY-MM-DD):', String(row.entry_date || ''));
+      if (date === null) return false;
+      const note = window.prompt('Comment / note:', String(row.note || ''));
+      if (note === null) return false;
+      updates = { value, entry_date: date, note: note.trim() };
+    }
+
+    if (type === 'recognition') {
+      const person = window.prompt('Recognised person:', String(row.nominated_person || ''));
+      if (person === null) return false;
+      const date = window.prompt('Entry date (YYYY-MM-DD):', String(row.entry_date || ''));
+      if (date === null) return false;
+      const reason = window.prompt('Reason / comment:', String(row.reason || ''));
+      if (reason === null) return false;
+      updates = { nominated_person: person.trim(), entry_date: date, reason: reason.trim() };
+    }
+
+    if (type === 'innovation') {
+      const title = window.prompt('Innovation title:', String(row.title || ''));
+      if (title === null) return false;
+      const date = window.prompt('Entry date (YYYY-MM-DD):', String(row.entry_date || ''));
+      if (date === null) return false;
+      const description = window.prompt('Description:', String(row.description || ''));
+      if (description === null) return false;
+      updates = { title: title.trim(), entry_date: date, description: description.trim() };
+    }
+
+    if (type === 'safety') {
+      const category = window.prompt('Safety category:', String(row.category || ''));
+      if (category === null) return false;
+      const date = window.prompt('Entry date (YYYY-MM-DD):', String(row.entry_date || ''));
+      if (date === null) return false;
+      const description = window.prompt('Description:', String(row.description || ''));
+      if (description === null) return false;
+      const externalReference = window.prompt('External reference (optional):', String(row.external_reference || ''));
+      if (externalReference === null) return false;
+      updates = {
+        category: category.trim(),
+        entry_date: date,
+        description: description.trim(),
+        external_reference: externalReference.trim()
+      };
+    }
+
+    const ok = window.confirm('Save these changes to the KUDOS entry? Scores and progress will be recalculated immediately.');
+    if (!ok) return false;
+
+    const { data, error } = await db
+      .from(table)
+      .update(updates)
+      .eq('id', id)
+      .select('id');
+
+    if (error) throw error;
+    if (!data?.length) throw new Error('No entry was updated. Check that it belongs to your team and that you have permission.');
+    return true;
   }
 
   async function submitPointAdjustment(form, ctx, teamId, data) {
