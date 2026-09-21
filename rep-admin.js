@@ -1,4 +1,4 @@
-const KUDOS_REP_TOOLS_VERSION = '2026-09-21.5';
+const KUDOS_REP_TOOLS_VERSION = '2026-09-21.6';
 
 const CFG = window.KUDOS_CONFIG || {};
 const SUPABASE_KEY = CFG.SUPABASE_PUBLISHABLE_KEY || CFG.SUPABASE_ANON_KEY || '';
@@ -261,11 +261,12 @@ if (!READY) {
       #kudos-rep-tools .admin-access-metric{padding:16px;border-radius:14px;background:rgba(12,35,56,.05)}
       #kudos-rep-tools .admin-access-metric b{display:block;font-size:1.7rem;line-height:1}
       #kudos-rep-tools .admin-access-metric span{display:block;margin-top:7px;font-size:.86rem;opacity:.72}
-      #kudos-rep-tools .admin-invite-form{display:grid;grid-template-columns:2fr 1fr 1.2fr auto;gap:10px;align-items:end}
+      #kudos-rep-tools .admin-invite-form{display:grid;grid-template-columns:1.6fr 1.2fr .8fr 1.2fr auto;gap:10px;align-items:end}
       #kudos-rep-tools .admin-invite-form .field{margin:0}
       #kudos-rep-tools .access-row-actions{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
       #kudos-rep-tools .access-role-select{min-width:110px}
       #kudos-rep-tools .access-team-select{min-width:150px}
+      #kudos-rep-tools .access-password-input{min-width:150px;max-width:190px}
       #kudos-rep-tools .access-current-user{font-size:.74rem;font-weight:800;letter-spacing:.05em;text-transform:uppercase;opacity:.65}
       #kudos-rep-tools .access-audit{font-size:.88rem}
       #kudos-rep-tools .magic-link-card{margin-top:14px}
@@ -872,7 +873,9 @@ if (!READY) {
         <td>
           <div class="access-row-actions">
             <button class="btn primary compact" data-access-save="${esc(d.auth_user_id)}">${a?'Save':'Grant'}</button>
-            <button class="btn ghost compact" data-access-link="${esc(d.email)}">Email sign-in link</button>
+            <input class="access-password-input" data-access-password-input="${esc(d.auth_user_id)}" type="password" minlength="10" placeholder="New password">
+            <button class="btn ghost compact" data-access-password="${esc(d.auth_user_id)}" data-email="${esc(d.email)}">Set password</button>
+            <button class="btn ghost compact" data-access-reset-email="${esc(d.email)}">Email reset</button>
             ${a?`<button class="btn danger compact rep-tool-danger" data-access-revoke="${esc(d.auth_user_id)}" data-email="${esc(d.email)}">Revoke</button>`:''}
           </div>
         </td>
@@ -913,13 +916,14 @@ if (!READY) {
           <div class="admin-access-metric"><b>${data.pending.length}</b><span>Pending invitations</span></div>
         </div>
 
-        <h3>Invite a Rep or Admin</h3>
-        <div class="notice">The invite sends a passwordless sign-in email. KUDOS access is pre-assigned here, so the user does not need to be created or edited in Supabase manually.</div>
+        <h3>Create a Rep or Admin account</h3>
+        <div class="notice">Creates a confirmed KUDOS account immediately using email + password. No invitation email is required. Give the temporary password to the user securely; they can change it later.</div>
         <form id="kudos-access-invite-form" class="admin-invite-form" style="margin-top:14px">
-          <div class="field"><label>Email</label><input name="email" type="email" required placeholder="name@example.com"></div>
+          <div class="field"><label>Email</label><input name="email" type="email" required autocomplete="email" placeholder="name@example.com"></div>
+          <div class="field"><label>Temporary password</label><input name="password" type="password" minlength="10" required autocomplete="new-password" placeholder="At least 10 characters"></div>
           <div class="field"><label>Role</label><select name="role" id="kudos-invite-role"><option value="rep">Rep</option><option value="admin">Admin</option></select></div>
           <div class="field"><label>Rep team <span class="help">(optional for Admin)</span></label>${teamSelectHtml(teams,'',false,'name="team_id" id="kudos-invite-team"')}</div>
-          <button class="btn navy" type="submit">Send invite</button>
+          <button class="btn navy" type="submit">Create account</button>
         </form>
         <div id="kudos-access-status" class="rep-tool-status"></div>
       </div>
@@ -965,25 +969,12 @@ if (!READY) {
     el.innerHTML = `<div class="notice ${isError?'':'success'}">${esc(message)}</div>`;
   }
 
-  function transientAuthClient() {
-    return window.supabase.createClient(CFG.SUPABASE_URL, SUPABASE_KEY, {
-      auth: {persistSession:false, autoRefreshToken:false, detectSessionInUrl:false}
-    });
+  async function sendPasswordReset(email) {
+    const redirect = `${window.location.origin}${window.location.pathname}`;
+    const { error } = await db.auth.resetPasswordForEmail(email, { redirectTo: redirect });
+    if (error) throw error;
   }
 
-  async function sendSignInLink(email, shouldCreateUser) {
-    const sender = transientAuthClient();
-    const options = {shouldCreateUser};
-    const redirect = `${window.location.origin}${window.location.pathname}`;
-    let result = await sender.auth.signInWithOtp({
-      email,
-      options: {...options, emailRedirectTo: redirect}
-    });
-    if (result.error && /redirect/i.test(String(result.error.message || ''))) {
-      result = await sender.auth.signInWithOtp({email, options});
-    }
-    if (result.error) throw result.error;
-  }
 
   async function saveAccessRecord(userId, role, teamId) {
     if (!['rep','admin'].includes(role)) throw new Error('Choose Rep or Admin.');
@@ -1005,31 +996,37 @@ if (!READY) {
     return true;
   }
 
-  async function inviteAccess(ctx, email, role, teamId, adminData) {
+  async function createAccessAccount(email, password, role, teamId) {
     email = String(email || '').trim().toLowerCase();
+    password = String(password || '');
     if (!email) throw new Error('Enter an email address.');
+    if (password.length < 10) throw new Error('Temporary password must be at least 10 characters.');
     if (!['rep','admin'].includes(role)) throw new Error('Choose Rep or Admin.');
     if (role === 'rep' && !teamId) throw new Error('Choose a team for the Rep.');
 
-    const redirectTo = `${window.location.origin}${window.location.pathname}`;
     const {data, error} = await db.functions.invoke('manage-kudos-account', {
       body: {
+        action: 'create',
         email,
+        password,
         role,
-        team_id: teamId || null,
-        redirect_to: redirectTo
+        team_id: teamId || null
       }
     });
 
     if (error) throw error;
     if (data?.error) throw new Error(data.error);
+    return 'Account created. The user can now sign in with their email address and password.';
+  }
 
-    if (data?.existing) {
-      await sendSignInLink(email, false);
-      return 'Access updated and a passwordless sign-in link has been emailed.';
-    }
-
-    return 'Invitation sent. The account has been created with the selected KUDOS access and the invite link provides the single passwordless sign-in.';
+  async function setAccountPassword(userId, password) {
+    password = String(password || '');
+    if (password.length < 10) throw new Error('Password must be at least 10 characters.');
+    const {data, error} = await db.functions.invoke('manage-kudos-account', {
+      body: { action: 'set_password', user_id: userId, password }
+    });
+    if (error) throw error;
+    if (data?.error) throw new Error(data.error);
   }
 
   async function cancelPendingInvite(email) {
@@ -1124,19 +1121,18 @@ if (!READY) {
       const fd = new FormData(e.target);
       try {
         if (button) button.disabled = true;
-        setAccessStatus('Sending invitation…');
-        const message = await inviteAccess(
-          ctx,
+        setAccessStatus('Creating account…');
+        const message = await createAccessAccount(
           fd.get('email'),
+          fd.get('password'),
           String(fd.get('role') || ''),
-          String(fd.get('team_id') || ''),
-          adminData
+          String(fd.get('team_id') || '')
         );
         setAccessStatus(message);
         setTimeout(() => window.location.reload(), 900);
       } catch (err) {
         if (button) button.disabled = false;
-        setAccessStatus(`Could not send invite: ${err.message || err}`, true);
+        setAccessStatus(`Could not create account: ${err.message || err}`, true);
       }
     });
 
@@ -1171,14 +1167,32 @@ if (!READY) {
       });
     });
 
-    root.querySelectorAll('[data-access-link]').forEach(btn => {
+    root.querySelectorAll('[data-access-password]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const userId = btn.dataset.accessPassword;
+        const input = root.querySelector(`[data-access-password-input="${CSS.escape(userId)}"]`);
+        const password = String(input?.value || '');
+        try {
+          btn.disabled = true;
+          await setAccountPassword(userId, password);
+          if (input) input.value = '';
+          setAccessStatus(`Password updated for ${btn.dataset.email}.`);
+        } catch (err) {
+          setAccessStatus(`Could not set password: ${err.message || err}`, true);
+        } finally {
+          btn.disabled = false;
+        }
+      });
+    });
+
+    root.querySelectorAll('[data-access-reset-email]').forEach(btn => {
       btn.addEventListener('click', async () => {
         try {
           btn.disabled = true;
-          await sendSignInLink(btn.dataset.accessLink, false);
-          setAccessStatus(`Sign-in email sent to ${btn.dataset.accessLink}.`);
+          await sendPasswordReset(btn.dataset.accessResetEmail);
+          setAccessStatus(`Password reset email requested for ${btn.dataset.accessResetEmail}.`);
         } catch (err) {
-          setAccessStatus(`Could not send sign-in email: ${err.message || err}`, true);
+          setAccessStatus(`Could not send password reset email: ${err.message || err}`, true);
         } finally {
           btn.disabled = false;
         }
@@ -1200,40 +1214,61 @@ if (!READY) {
     });
   }
 
-  function renderMagicLinkSignin(main) {
+  function renderPasswordSignin(main) {
     if (document.getElementById('kudos-rep-tools')) return;
     const root = document.createElement('section');
     root.id = 'kudos-rep-tools';
     root.innerHTML = `
       <div class="card magic-link-card">
-        <h3 style="margin-top:0">Sign in by email link</h3>
-        <p class="challenge-desc">Reps and admins can sign in without a password. Enter the email address that has been granted KUDOS access.</p>
-        <form id="kudos-magic-login-form" class="admin-invite-form">
-          <div class="field"><label>Email</label><input name="email" type="email" required autocomplete="email" placeholder="name@example.com"></div>
+        <h3 style="margin-top:0">Rep / Admin sign in</h3>
+        <p class="challenge-desc">Sign in with the email address and password assigned to your KUDOS management account.</p>
+        <form id="kudos-password-login-form" class="admin-invite-form">
+          <div class="field"><label>Email</label><input name="email" type="email" required autocomplete="username" placeholder="name@example.com"></div>
+          <div class="field"><label>Password</label><input name="password" type="password" required autocomplete="current-password"></div>
           <div></div><div></div>
-          <button class="btn navy" type="submit">Email sign-in link</button>
+          <button class="btn navy" type="submit">Sign in</button>
         </form>
-        <div id="kudos-magic-login-status" class="rep-tool-status"></div>
+        <div style="margin-top:10px"><button class="btn ghost compact" id="kudos-forgot-password" type="button">Forgot password</button></div>
+        <div id="kudos-password-login-status" class="rep-tool-status"></div>
       </div>
     `;
     main.appendChild(root);
-    document.getElementById('kudos-magic-login-form')?.addEventListener('submit', async e => {
+
+    const form = root.querySelector('#kudos-password-login-form');
+    const status = root.querySelector('#kudos-password-login-status');
+    form?.addEventListener('submit', async e => {
       e.preventDefault();
       const btn = e.target.querySelector('button[type="submit"]');
-      const email = String(new FormData(e.target).get('email') || '').trim();
-      const status = document.getElementById('kudos-magic-login-status');
+      const fd = new FormData(e.target);
       try {
         if (btn) btn.disabled = true;
-        await sendSignInLink(email, false);
-        if (status) status.innerHTML = '<div class="notice success">If this email has a KUDOS access account, a sign-in link has been sent.</div>';
+        const { error } = await db.auth.signInWithPassword({
+          email: String(fd.get('email') || '').trim(),
+          password: String(fd.get('password') || '')
+        });
+        if (error) throw error;
+        window.location.reload();
       } catch (err) {
         if (status) status.innerHTML = `<div class="notice">${esc(err.message || err)}</div>`;
       } finally {
         if (btn) btn.disabled = false;
       }
     });
-  }
 
+    root.querySelector('#kudos-forgot-password')?.addEventListener('click', async () => {
+      const email = String(new FormData(form).get('email') || '').trim();
+      if (!email) {
+        if (status) status.innerHTML = '<div class="notice">Enter your email address first, then choose Forgot password.</div>';
+        return;
+      }
+      try {
+        await sendPasswordReset(email);
+        if (status) status.innerHTML = '<div class="notice success">Password reset email requested. Check your inbox.</div>';
+      } catch (err) {
+        if (status) status.innerHTML = `<div class="notice">${esc(err.message || err)}</div>`;
+      }
+    });
+  }
 
   async function renderTools(main, ctx, teams, teamId, mode, profile, repTeamId) {
     const existing = document.getElementById('kudos-rep-tools');
@@ -1418,7 +1453,7 @@ if (!READY) {
       styles();
       const ctx = await getContext();
       if (!ctx.user) {
-        renderMagicLinkSignin(main);
+        renderPasswordSignin(main);
         return;
       }
       if (!ctx.appUser || !['rep', 'admin'].includes(ctx.appUser.role)) return;
