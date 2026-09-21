@@ -169,6 +169,8 @@ async function refresh(){
   }
 }
 
+window.KUDOS_REFRESH = refresh;
+
 function currentProfile(){ return state.data?.profiles.find(p=>p.id===state.profileId); }
 function teamName(id){return state.data?.teams.find(t=>t.id===id)?.name || 'Team';}
 function challengeById(id){return state.data?.challenges.find(c=>c.id===id);}
