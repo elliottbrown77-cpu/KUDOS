@@ -747,9 +747,16 @@ async function submitProfile(fd){
 }
 
 async function submitProgress(fd){
-  const p=currentProfile(); const record={id:uid('PU'),profile_id:p.id,challenge_id:fd.get('challenge_id'),value:Number(fd.get('value')),date:fd.get('date'),note:fd.get('note')||''};
+  const p=currentProfile(); const record={id:uid('PU'),profile_id:p.id,challenge_id:fd.get('challenge_id'),value:Number(fd.get('value')),date:fd.get('date'),note:String(fd.get('note')||'').trim()};
   if(state.mode==='demo'){state.data.progress.push(record);saveDemo();state.notice='Saved. Your contribution has been added to the team total.';state.view='progress';state.challengeFilter=record.challenge_id;render();return;}
-  const {error}=await supabase.from('progress_entries').insert({profile_id:record.profile_id,challenge_id:record.challenge_id,value:record.value,entry_date:record.date,note:record.note}); if(error) throw error; state.notice='Saved. Your contribution has been added to the team total.'; await refresh();
+  const {error}=await supabase.from('progress_entries').insert({profile_id:record.profile_id,challenge_id:record.challenge_id,value:record.value,entry_date:record.date,note:record.note});
+  if(error){
+    if(error.code==='23505' && String(error.message||'').includes('progress_entries_exact_duplicate_guard')){
+      throw new Error('This exact progress entry has already been logged for this person, challenge and date. KUDOS has not added it again.');
+    }
+    throw error;
+  }
+  state.notice='Saved. Your contribution has been added to the team total.'; await refresh();
 }
 
 async function postDetectedNetlifyForm(formName, values){
@@ -975,7 +982,19 @@ function bind(){
   document.getElementById('reportChallenge')?.addEventListener('change',e=>{state.reportChallengeKey=e.target.value;render()});
   document.getElementById('adminLoginForm')?.addEventListener('submit',async e=>{e.preventDefault();try{await submitAdminLogin(new FormData(e.target))}catch(err){state.notice=`Could not sign in: ${err.message||err}`;render()}});
   document.getElementById('profileForm')?.addEventListener('submit',async e=>{e.preventDefault();try{await submitProfile(new FormData(e.target))}catch(err){state.notice=`Could not save: ${err.message||err}`;render()}});
-  document.getElementById('progressForm')?.addEventListener('submit',async e=>{e.preventDefault();try{await submitProgress(new FormData(e.target))}catch(err){state.notice=`Could not save: ${err.message||err}`;render()}});
+  document.getElementById('progressForm')?.addEventListener('submit',async e=>{
+    e.preventDefault();
+    const button=e.target.querySelector('button[type="submit"]');
+    try{
+      if(button){button.disabled=true;button.textContent='Saving…';}
+      await submitProgress(new FormData(e.target));
+    }catch(err){
+      state.notice=`Could not save: ${err.message||err}`;
+      render();
+    }finally{
+      if(button){button.disabled=false;button.textContent='Add to team progress';}
+    }
+  });
   document.getElementById('specialForm')?.addEventListener('submit',async e=>{e.preventDefault();try{await submitSpecial(e.target.dataset.type,new FormData(e.target))}catch(err){state.notice=`Could not save: ${err.message||err}`;render()}});
   document.getElementById('challengeForm')?.addEventListener('submit',async e=>{e.preventDefault();try{await submitChallenge(new FormData(e.target))}catch(err){state.notice=`Could not save: ${err.message||err}`;render()}});
   document.getElementById('modal')?.addEventListener('click',e=>{if(e.target.id==='modal' && currentProfile())closeModal()});
