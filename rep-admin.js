@@ -321,31 +321,63 @@ if (!READY) {
     `;
   }
 
-  function renderEntrySection(data, existingAdminModeration) {
-    if (existingAdminModeration) return '';
-    const rows = entryRows(data).map(r => `
+  function renderEntrySection(data, teams=[], global=false) {
+    const profileMap = Object.fromEntries(data.profiles.map(p => [p.id, p]));
+    const teamMap = Object.fromEntries(teams.map(t => [t.id, t.name]));
+    const rows = entryRows(data).map(r => {
+      const teamId = profileMap[r.profileId]?.team_id;
+      const teamName = teamMap[teamId] || 'Team';
+      return `
       <tr>
         <td><strong>${esc(r.label)}</strong></td>
         <td>${esc(r.person)}</td>
+        ${global ? `<td>${esc(teamName)}</td>` : ''}
         <td>${esc(r.date)}</td>
         <td><strong>${esc(r.title)}</strong></td>
         <td class="detail">${esc(r.detail)}</td>
         <td class="num"><button class="btn danger compact rep-tool-danger" data-rep-delete-entry="${esc(r.id)}" data-entry-type="${esc(r.type)}">Remove</button></td>
-      </tr>
-    `).join('');
+      </tr>`;
+    }).join('');
+
+    const headers = global
+      ? ['Type','Submitted by','Team','Date','Entry','Detail','']
+      : ['Type','Submitted by','Date','Entry','Detail',''];
 
     return `
-      <div class="section-title"><h2>Entry moderation</h2><p>Remove erroneous entries from your team</p></div>
+      <div class="section-title"><h2>Entry moderation</h2><p>${global ? 'Remove erroneous entries across all teams' : 'Remove erroneous entries from your team'}</p></div>
       <div class="card rep-tool-card admin-scroll-card">
-        <div class="notice">Removing an entry immediately recalculates challenge progress and KUDOS scores. Any email notification already sent cannot be recalled.</div>
+        <div class="notice">${global ? 'Showing entries from all teams. ' : ''}Removing an entry immediately recalculates challenge progress and KUDOS scores. Any email notification already sent cannot be recalled.</div>
         <div class="table-wrap" style="margin-top:12px">
           <table class="rep-tool-table">
-            <thead><tr><th>Type</th><th>Submitted by</th><th>Date</th><th>Entry</th><th>Detail</th><th></th></tr></thead>
-            <tbody>${rows || '<tr><td colspan="6"><div class="empty compact-empty">No entries to moderate for this team.</div></td></tr>'}</tbody>
+            <thead><tr>${headers.map(h=>`<th>${esc(h)}</th>`).join('')}</tr></thead>
+            <tbody>${rows || `<tr><td colspan="${headers.length}"><div class="empty compact-empty">No entries to moderate.</div></td></tr>`}</tbody>
           </table>
         </div>
       </div>
     `;
+  }
+
+  async function loadGlobalModerationData() {
+    const [profilesRes, challengesRes, progressRes, rewardsRes, innovationRes, safetyRes] = await Promise.all([
+      db.from('profiles').select('id,name,team_id').eq('active', true).order('name'),
+      db.from('challenges').select('id,title,unit,team_id').order('start_date', {ascending:false}),
+      db.from('progress_entries').select('*').order('created_at', {ascending:false}).limit(1000),
+      db.from('recognition_entries').select('*').order('created_at', {ascending:false}).limit(1000),
+      db.from('innovation_entries').select('*').order('created_at', {ascending:false}).limit(1000),
+      db.from('safety_entries').select('*').order('created_at', {ascending:false}).limit(1000)
+    ]);
+    const err = [profilesRes, challengesRes, progressRes, rewardsRes, innovationRes, safetyRes].find(r => r.error)?.error;
+    if (err) throw err;
+    return {
+      profiles: profilesRes.data || [],
+      challenges: challengesRes.data || [],
+      entries: {
+        progress: progressRes.data || [],
+        recognition: rewardsRes.data || [],
+        innovation: innovationRes.data || [],
+        safety: safetyRes.data || []
+      }
+    };
   }
 
   async function loadGlobalContributionData() {
@@ -1179,9 +1211,9 @@ if (!READY) {
       } else {
         const data = await loadTeamData(teamId);
         const isGlobalAdmin = mode === 'admin' && ctx.appUser?.role === 'admin';
-        const [adminData, contributionData, globalProfileData] = isGlobalAdmin
-          ? await Promise.all([loadAccessAdminData(), loadGlobalContributionData(), loadGlobalProfileData()])
-          : [null, data, null];
+        const [adminData, contributionData, globalProfileData, moderationData] = isGlobalAdmin
+          ? await Promise.all([loadAccessAdminData(), loadGlobalContributionData(), loadGlobalProfileData(), loadGlobalModerationData()])
+          : [null, data, null, data];
         const selectedTeam = teams.find(t => t.id === teamId);
 
         root.innerHTML = `
@@ -1202,7 +1234,7 @@ if (!READY) {
               </div>` : ''}
           </div>
           ${renderChallengeSection(data, mode === 'admin')}
-          ${renderEntrySection(data, false)}
+          ${renderEntrySection(moderationData, teams, isGlobalAdmin)}
           ${renderContributionQueues(contributionData, teams, isGlobalAdmin)}
           ${renderPointsSection(data, mode === 'admin')}
           ${mode === 'admin' ? renderProfileManagementSection(globalProfileData || data, teams) : ''}
