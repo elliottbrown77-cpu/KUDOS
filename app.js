@@ -68,7 +68,7 @@ function loadDemo(){
 function saveDemo(){ if(state.mode==='demo') localStorage.setItem('kudos_demo_data',JSON.stringify(state.data)); }
 
 async function loadSupabase(){
-  const [teams,profiles,challenges,psfs,challengePsfs,challengeProgress,profileTotals,profileScores,teamScores,progressHistory] = await Promise.all([
+  const [teams,profiles,challenges,psfs,challengePsfs,challengeProgress,profileTotals,profileScores,teamScores,progressHistory,progressEntryFeed] = await Promise.all([
     supabase.from('teams').select('*').order('name'),
     supabase.from('profiles').select('*').eq('active',true).order('name'),
     supabase.from('challenges').select('*').eq('active',true).order('start_date'),
@@ -78,9 +78,10 @@ async function loadSupabase(){
     supabase.from('profile_challenge_totals').select('*'),
     supabase.from('profile_scores').select('*'),
     supabase.from('team_scores').select('*'),
-    supabase.from('progress_history').select('*').order('entry_date')
+    supabase.from('progress_history').select('*').order('entry_date'),
+    supabase.from('progress_entry_feed').select('*').order('entry_date',{ascending:false}).order('created_at',{ascending:false})
   ]);
-  const err=[teams,profiles,challenges,psfs,challengePsfs,challengeProgress,profileTotals,profileScores,teamScores,progressHistory].find(x=>x.error);
+  const err=[teams,profiles,challenges,psfs,challengePsfs,challengeProgress,profileTotals,profileScores,teamScores,progressHistory,progressEntryFeed].find(x=>x.error);
   if(err?.error) throw err.error;
   const psfMap = Object.fromEntries(psfs.data.map(x=>[x.id,x.name]));
   const cPsfs = {};
@@ -93,6 +94,7 @@ async function loadSupabase(){
     profileScores:profileScores.data,
     teamScores:teamScores.data,
     progressHistory:progressHistory.data,
+    progressEntryFeed:progressEntryFeed.data||[],
     progress:[], recognition:[], innovation:[], safety:[]
   };
 }
@@ -367,17 +369,64 @@ function svgChart(challenge,profileId=null){
   return `<svg class="spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none"><line class="axis" x1="${pad}" y1="${H-pad}" x2="${W-pad}" y2="${H-pad}"/><line class="goal" x1="${pad}" y1="${gy}" x2="${W-pad}" y2="${gy}"/><path class="series" d="${d}"/>${dots}<text x="${pad}" y="15">Target ${fmt(target)} ${esc(challenge.unit)}</text><text x="${pad}" y="${H-7}">${esc(pts[0].date)}</text><text x="${W-pad-70}" y="${H-7}">${esc(pts.at(-1).date)}</text></svg>`;
 }
 
+function progressCommentsBox(challengeIds, profileId=null) {
+  const ids=new Set(Array.isArray(challengeIds)?challengeIds:[challengeIds]);
+  const rows=(state.mode==='supabase'
+    ? (state.data.progressEntryFeed||[])
+    : (state.data.progress||[]).map(x=>({
+        id:x.id,
+        profile_id:x.profile_id,
+        challenge_id:x.challenge_id,
+        value:x.value,
+        entry_date:x.date,
+        note:x.note||''
+      })))
+    .filter(x=>ids.has(x.challenge_id) && (!profileId || x.profile_id===profileId))
+    .sort((a,b)=>String(b.entry_date||'').localeCompare(String(a.entry_date||'')));
+
+  if(!rows.length) {
+    return '<div class="card"><h3 style="margin-top:0">Entry comments</h3><div class="empty compact-empty">No progress entries yet.</div></div>';
+  }
+
+  const body=rows.map(x=>{
+    const challenge=challengeById(x.challenge_id);
+    const person=profileById(x.profile_id)?.name || 'Profile';
+    const comment=String(x.note||'').trim();
+    return `<tr>
+      <td>${esc(x.entry_date||'')}</td>
+      <td><strong>${esc(person)}</strong></td>
+      <td>${esc(challenge?.title||'Challenge')}</td>
+      <td class="num">${fmt(Number(x.value||0))} ${esc(challenge?.unit||'')}</td>
+      <td class="detail">${comment ? esc(comment) : '<span class="rep-tool-muted">—</span>'}</td>
+    </tr>`;
+  }).join('');
+
+  return `<div class="card" style="margin-top:14px">
+    <h3 style="margin-top:0">Entry comments</h3>
+    <div class="help" style="margin-bottom:10px">Comments recorded with each progress entry.</div>
+    <div class="table-wrap">
+      <table class="rep-tool-table">
+        <thead><tr><th>Date</th><th>Person</th><th>Challenge</th><th>Value</th><th>Comment</th></tr></thead>
+        <tbody>${body}</tbody>
+      </table>
+    </div>
+  </div>`;
+}
+
 function progressView(){
   const p=currentProfile(); const team=state.teamFilter||p?.team_id;
   const selectedProfile=state.profileFilter||p?.id;
   const teamOpts=state.data.teams.map(t=>`<option value="${t.id}" ${t.id===team?'selected':''}>${esc(t.name)}</option>`).join('');
   const profiles=state.data.profiles.filter(x=>x.team_id===team); const profileOpts=profiles.map(x=>`<option value="${x.id}" ${x.id===selectedProfile?'selected':''}>${esc(x.name)}</option>`).join('');
   const cs=activeTeamChallenges(team); const selected=state.challengeFilter==='all'?cs[0]:cs.find(c=>c.id===state.challengeFilter)||cs[0];
+  const commentsProfile = state.progressMode==='individual' ? selectedProfile : null;
+  const commentChallengeIds = state.challengeFilter==='all' ? cs.map(c=>c.id) : (selected ? [selected.id] : []);
   return `<div class="section-title"><h2>Progress</h2><p>Team targets and individual contribution</p></div><div class="card">
   <div class="segmented"><button data-mode="team" class="${state.progressMode==='team'?'active':''}">Team</button><button data-mode="individual" class="${state.progressMode==='individual'?'active':''}">Individual</button></div>
   <div class="grid two" style="margin-top:14px"><div class="field"><label>Team</label><select id="progressTeam">${teamOpts}</select></div>${state.progressMode==='individual'?`<div class="field"><label>Person</label><select id="progressProfile">${profileOpts}</select></div>`:'<div></div>'}</div>
   <div class="field"><label>Challenge</label><select id="progressChallenge"><option value="all">All challenges</option>${cs.map(c=>`<option value="${c.id}" ${state.challengeFilter===c.id?'selected':''}>${esc(c.title)}</option>`).join('')}</select></div></div>
-  ${state.challengeFilter==='all'?allChallengesProgress(cs, selectedProfile):singleChallengeProgress(selected, selectedProfile)}`;
+  ${state.challengeFilter==='all'?allChallengesProgress(cs, selectedProfile):singleChallengeProgress(selected, selectedProfile)}
+  ${progressCommentsBox(commentChallengeIds, commentsProfile)}`;
 }
 function allChallengesProgress(cs,profileId){
   return `<div class="section-title"><h2>All challenges</h2><p>Comparable by percentage complete</p></div><div class="grid two">${cs.map(c=>{
