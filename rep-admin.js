@@ -951,7 +951,7 @@ if (!READY) {
   }
 
   async function sendPasswordReset(email) {
-    const redirect = `${window.location.origin}${window.location.pathname}`;
+    const redirect = 'https://chfkudos.netlify.app/?kudos=password-reset';
     const { error } = await db.auth.resetPasswordForEmail(email, { redirectTo: redirect });
     if (error) throw error;
   }
