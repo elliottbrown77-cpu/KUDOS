@@ -1,4 +1,4 @@
-const KUDOS_REP_TOOLS_VERSION = '2026-09-21.2';
+const KUDOS_REP_TOOLS_VERSION = '2026-09-21.3';
 
 const CFG = window.KUDOS_CONFIG || {};
 const SUPABASE_KEY = CFG.SUPABASE_PUBLISHABLE_KEY || CFG.SUPABASE_ANON_KEY || '';
@@ -381,6 +381,7 @@ if (!READY) {
         ${global ? `<td>${teamCell(x.profile_id)}</td>` : ''}
         <td>${esc(x.category || 'Flight Safety')}</td>
         <td class="detail">${esc(x.description || '')}${x.external_reference ? `<div class="help">Ref: ${esc(x.external_reference)}</div>` : ''}</td>
+        ${global ? `<td class="num"><button class="btn danger compact rep-tool-danger" data-rep-delete-entry="${esc(x.id)}" data-entry-type="safety">Delete</button></td>` : ''}
       </tr>`).join('');
 
     const innovationRows = [...data.entries.innovation]
@@ -391,6 +392,7 @@ if (!READY) {
         ${global ? `<td>${teamCell(x.profile_id)}</td>` : ''}
         <td>${esc(x.title || 'Innovation')}</td>
         <td class="detail">${esc(x.description || '')}</td>
+        ${global ? `<td class="num"><button class="btn danger compact rep-tool-danger" data-rep-delete-entry="${esc(x.id)}" data-entry-type="innovation">Delete</button></td>` : ''}
       </tr>`).join('');
 
     const rewardRows = [...data.entries.recognition]
@@ -401,6 +403,7 @@ if (!READY) {
         ${global ? `<td>${teamCell(x.submitter_profile_id)}</td>` : ''}
         <td>${esc(x.nominated_person || 'Not recorded')}</td>
         <td class="detail">${esc(x.reason || '')}</td>
+        ${global ? `<td class="num"><button class="btn danger compact rep-tool-danger" data-rep-delete-entry="${esc(x.id)}" data-entry-type="recognition">Delete</button></td>` : ''}
       </tr>`).join('');
 
     const table = (headers, rows, empty) => `
@@ -419,19 +422,19 @@ if (!READY) {
       <div class="card rep-tool-card">
         <div class="eyebrow">FLIGHT SAFETY</div>
         <h3 style="margin:.25rem 0 12px">Safety contributions</h3>
-        ${table(global ? ['Date','Submitted by','Team','Category','Contribution'] : ['Date','Submitted by','Category','Contribution'], safetyRows, 'No Flight Safety contributions found.')}
+        ${table(global ? ['Date','Submitted by','Team','Category','Contribution',''] : ['Date','Submitted by','Category','Contribution'], safetyRows, 'No Flight Safety contributions found.')}
       </div>
 
       <div class="card rep-tool-card">
         <div class="eyebrow">INNOVATION</div>
         <h3 style="margin:.25rem 0 12px">Innovation contributions</h3>
-        ${table(global ? ['Date','Submitted by','Team','Idea','Detail'] : ['Date','Submitted by','Idea','Detail'], innovationRows, 'No Innovation contributions found.')}
+        ${table(global ? ['Date','Submitted by','Team','Idea','Detail',''] : ['Date','Submitted by','Idea','Detail'], innovationRows, 'No Innovation contributions found.')}
       </div>
 
       <div class="card rep-tool-card">
         <div class="eyebrow">REWARDS</div>
         <h3 style="margin:.25rem 0 12px">Recognition / rewards</h3>
-        ${table(global ? ['Date','Submitted by','Team','Recognised person','Reason'] : ['Date','Submitted by','Recognised person','Reason'], rewardRows, 'No Recognition / Reward contributions found.')}
+        ${table(global ? ['Date','Submitted by','Team','Recognised person','Reason',''] : ['Date','Submitted by','Recognised person','Reason'], rewardRows, 'No Recognition / Reward contributions found.')}
       </div>
     `;
   }
