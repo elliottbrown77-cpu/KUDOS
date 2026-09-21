@@ -1,4 +1,4 @@
-const KUDOS_REP_TOOLS_VERSION = '2026-09-20.4';
+const KUDOS_REP_TOOLS_VERSION = '2026-09-21.1';
 
 const CFG = window.KUDOS_CONFIG || {};
 const SUPABASE_KEY = CFG.SUPABASE_PUBLISHABLE_KEY || CFG.SUPABASE_ANON_KEY || '';
@@ -976,33 +976,25 @@ if (!READY) {
     if (!['rep','admin'].includes(role)) throw new Error('Choose Rep or Admin.');
     if (role === 'rep' && !teamId) throw new Error('Choose a team for the Rep.');
 
-    const existing = adminData.directory.find(d => String(d.email||'').toLowerCase() === email);
-    if (existing) {
-      await saveAccessRecord(existing.auth_user_id, role, teamId);
+    const redirectTo = `${window.location.origin}${window.location.pathname}`;
+    const {data, error} = await db.functions.invoke('manage-kudos-account', {
+      body: {
+        email,
+        role,
+        team_id: teamId || null,
+        redirect_to: redirectTo
+      }
+    });
+
+    if (error) throw error;
+    if (data?.error) throw new Error(data.error);
+
+    if (data?.existing) {
       await sendSignInLink(email, false);
-      return 'Access updated and a sign-in link has been emailed.';
+      return 'Access updated and a passwordless sign-in link has been emailed.';
     }
 
-    const pending = {
-      email,
-      role,
-      team_id: teamId || null,
-      invited_by: ctx.user.id
-    };
-
-    const {error: pendingError} = await db
-      .from('pending_access_invites')
-      .upsert(pending, {onConflict:'email'});
-    if (pendingError) throw pendingError;
-
-    try {
-      await sendSignInLink(email, true);
-    } catch (err) {
-      await db.from('pending_access_invites').delete().eq('email', email);
-      throw err;
-    }
-
-    return 'Invitation sent. Access will activate automatically when the account is created from the email link.';
+    return 'Invitation sent. The account has been created with the selected KUDOS access and the invite link provides the single passwordless sign-in.';
   }
 
   async function cancelPendingInvite(email) {
