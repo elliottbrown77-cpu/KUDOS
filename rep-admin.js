@@ -882,15 +882,7 @@ if (!READY) {
       </tr>`;
     }).join('');
 
-    const pendingRows = data.pending.map(p => `
-      <tr>
-        <td><strong>${esc(p.email)}</strong></td>
-        <td>${esc(String(p.role||'').toUpperCase())}</td>
-        <td>${esc(p.team_id ? (teamMap[p.team_id] || 'Team') : '—')}</td>
-        <td>${esc(dt(p.invited_at))}</td>
-        <td><button class="btn danger compact rep-tool-danger" data-pending-cancel="${esc(p.email)}">Cancel</button></td>
-      </tr>
-    `).join('');
+
 
     const auditRows = data.audit.map(a => {
       const oldRole = a.old_role ? String(a.old_role).toUpperCase() : '—';
@@ -913,7 +905,6 @@ if (!READY) {
           <div class="admin-access-metric"><b>${admins}</b><span>Administrators</span></div>
           <div class="admin-access-metric"><b>${reps}</b><span>Performance Reps</span></div>
           <div class="admin-access-metric"><b>${unassigned}</b><span>Unassigned access accounts</span></div>
-          <div class="admin-access-metric"><b>${data.pending.length}</b><span>Pending invitations</span></div>
         </div>
 
         <h3>Create a Rep or Admin account</h3>
@@ -937,16 +928,6 @@ if (!READY) {
           <table class="rep-tool-table">
             <thead><tr><th>Email</th><th>Last sign-in</th><th>Role</th><th>Rep team</th><th></th></tr></thead>
             <tbody>${directoryRows || '<tr><td colspan="5"><div class="empty compact-empty">No access accounts found.</div></td></tr>'}</tbody>
-          </table>
-        </div>
-      </div>
-
-      <div class="section-title"><h2>Pending invitations</h2><p>Invites awaiting account creation/sign-in</p></div>
-      <div class="card rep-tool-card">
-        <div class="table-wrap">
-          <table class="rep-tool-table">
-            <thead><tr><th>Email</th><th>Role</th><th>Rep team</th><th>Invited</th><th></th></tr></thead>
-            <tbody>${pendingRows || '<tr><td colspan="5"><div class="empty compact-empty">No pending access invitations.</div></td></tr>'}</tbody>
           </table>
         </div>
       </div>
@@ -1029,13 +1010,6 @@ if (!READY) {
     if (data?.error) throw new Error(data.error);
   }
 
-  async function cancelPendingInvite(email) {
-    const ok = window.confirm(`Cancel the pending KUDOS access invitation for ${email}?`);
-    if (!ok) return false;
-    const {error} = await db.from('pending_access_invites').delete().eq('email', email);
-    if (error) throw error;
-    return true;
-  }
 
   function bindAccessAdmin(ctx, teams, adminData, root) {
     if (ctx.appUser?.role !== 'admin') return;
@@ -1199,19 +1173,7 @@ if (!READY) {
       });
     });
 
-    root.querySelectorAll('[data-pending-cancel]').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        try {
-          btn.disabled = true;
-          const changed = await cancelPendingInvite(btn.dataset.pendingCancel);
-          if (changed) window.location.reload();
-          else btn.disabled = false;
-        } catch (err) {
-          btn.disabled = false;
-          setAccessStatus(`Could not cancel invite: ${err.message || err}`, true);
-        }
-      });
-    });
+
   }
 
   function renderPasswordSignin(main) {
