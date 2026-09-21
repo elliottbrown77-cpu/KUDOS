@@ -1411,7 +1411,9 @@ if (!READY) {
           btn.addEventListener('click', async () => {
             try {
               btn.disabled = true;
-              await deleteEntry(btn.dataset.entryType, btn.dataset.repDeleteEntry);
+              const changed = await deleteEntry(btn.dataset.entryType, btn.dataset.repDeleteEntry);
+              if (changed) refreshToolsInPlace();
+              else btn.disabled = false;
             } catch (err) {
               btn.disabled = false;
               setStatus(`Could not remove entry: ${err.message || err}`, true);
@@ -1419,6 +1421,57 @@ if (!READY) {
           });
         });
 
+        root.querySelectorAll('[data-rep-edit-entry]').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            try {
+              btn.disabled = true;
+              const changed = await editEntry(btn.dataset.entryType, btn.dataset.repEditEntry);
+              if (changed) refreshToolsInPlace();
+              else btn.disabled = false;
+            } catch (err) {
+              btn.disabled = false;
+              setStatus(`Could not edit entry: ${err.message || err}`, true);
+            }
+          });
+        });
+
+        const moderationChecks = [...root.querySelectorAll('.moderation-entry-check')];
+        const moderationSelectAll = root.querySelector('#moderation-select-all');
+        const moderationDeleteSelected = root.querySelector('#moderation-delete-selected');
+        const moderationSelectionCount = root.querySelector('#moderation-selection-count');
+
+        const syncModerationSelection = () => {
+          const selected = moderationChecks.filter(x => x.checked);
+          if (moderationSelectionCount) moderationSelectionCount.textContent = `${selected.length} selected`;
+          if (moderationDeleteSelected) moderationDeleteSelected.disabled = selected.length === 0;
+          if (moderationSelectAll) {
+            moderationSelectAll.checked = moderationChecks.length > 0 && selected.length === moderationChecks.length;
+            moderationSelectAll.indeterminate = selected.length > 0 && selected.length < moderationChecks.length;
+          }
+        };
+
+        moderationChecks.forEach(check => check.addEventListener('change', syncModerationSelection));
+        moderationSelectAll?.addEventListener('change', () => {
+          moderationChecks.forEach(check => { check.checked = moderationSelectAll.checked; });
+          syncModerationSelection();
+        });
+
+        moderationDeleteSelected?.addEventListener('click', async () => {
+          const items = moderationChecks
+            .filter(x => x.checked)
+            .map(x => ({ id: x.dataset.entryId, type: x.dataset.entryType }));
+          try {
+            moderationDeleteSelected.disabled = true;
+            const changed = await deleteEntriesBulk(items);
+            if (changed) refreshToolsInPlace();
+            else syncModerationSelection();
+          } catch (err) {
+            moderationDeleteSelected.disabled = false;
+            setStatus(`Could not remove selected entries: ${err.message || err}`, true);
+          }
+        });
+
+        syncModerationSelection();
 
         const profileSearch = root.querySelector('#kudos-admin-profile-search');
         if (profileSearch) {
