@@ -1,4 +1,4 @@
-const KUDOS_REP_TOOLS_VERSION = '2026-09-21.4';
+const KUDOS_REP_TOOLS_VERSION = '2026-09-21.5';
 
 const CFG = window.KUDOS_CONFIG || {};
 const SUPABASE_KEY = CFG.SUPABASE_PUBLISHABLE_KEY || CFG.SUPABASE_ANON_KEY || '';
@@ -241,6 +241,11 @@ if (!READY) {
       #kudos-rep-tools .rep-tools-head{display:flex;gap:12px;align-items:flex-end;justify-content:space-between;flex-wrap:wrap}
       #kudos-rep-tools .rep-tools-head .field{min-width:220px;margin:0}
       #kudos-rep-tools .rep-tool-card{margin-top:14px}
+      #kudos-rep-tools .admin-scroll-card{display:flex;flex-direction:column;max-height:560px;overflow:hidden}
+      #kudos-rep-tools .admin-scroll-card .table-wrap{overflow:auto;min-height:0;flex:1}
+      #kudos-rep-tools .profile-search-row{display:flex;gap:10px;align-items:end;justify-content:space-between;flex-wrap:wrap;margin-top:12px}
+      #kudos-rep-tools .profile-search-row .field{margin:0;min-width:min(320px,100%);flex:1}
+      #kudos-rep-tools .profile-search-count{font-size:.84rem;opacity:.72;white-space:nowrap}
       #kudos-rep-tools .rep-tool-actions{display:flex;gap:8px;flex-wrap:wrap}
       #kudos-rep-tools .rep-tool-table td,#kudos-rep-tools .rep-tool-table th{vertical-align:top}
       #kudos-rep-tools .rep-tool-table .detail{max-width:420px;white-space:normal}
@@ -432,19 +437,19 @@ if (!READY) {
     return `
       <div class="section-title"><h2>Contribution areas</h2><p>${scopeText} Safety, Innovation and Rewards</p></div>
 
-      <div class="card rep-tool-card">
+      <div class="card rep-tool-card admin-scroll-card">
         <div class="eyebrow">FLIGHT SAFETY</div>
         <h3 style="margin:.25rem 0 12px">Safety contributions</h3>
         ${table(global ? ['Date','Submitted by','Team','Category','Contribution',''] : ['Date','Submitted by','Category','Contribution'], safetyRows, 'No Flight Safety contributions found.')}
       </div>
 
-      <div class="card rep-tool-card">
+      <div class="card rep-tool-card admin-scroll-card">
         <div class="eyebrow">INNOVATION</div>
         <h3 style="margin:.25rem 0 12px">Innovation contributions</h3>
         ${table(global ? ['Date','Submitted by','Team','Idea','Detail',''] : ['Date','Submitted by','Idea','Detail'], innovationRows, 'No Innovation contributions found.')}
       </div>
 
-      <div class="card rep-tool-card">
+      <div class="card rep-tool-card admin-scroll-card">
         <div class="eyebrow">REWARDS</div>
         <h3 style="margin:.25rem 0 12px">Recognition / rewards</h3>
         ${table(global ? ['Date','Submitted by','Team','Recognised person','Reason',''] : ['Date','Submitted by','Recognised person','Reason'], rewardRows, 'No Recognition / Reward contributions found.')}
@@ -552,12 +557,15 @@ if (!READY) {
   function renderProfileManagementSection(data, teams=[]) {
     const scoreMap = Object.fromEntries(data.scores.map(s => [s.profile_id, s]));
     const teamMap = Object.fromEntries(teams.map(t => [t.id, t.name]));
-    const rows = [...data.profiles]
-      .sort((a,b) => String(a.name||'').localeCompare(String(b.name||''), 'en-GB', {sensitivity:'base'}))
-      .map(p => `
-        <tr>
+    const sortedProfiles = [...data.profiles]
+      .sort((a,b) => String(a.name||'').localeCompare(String(b.name||''), 'en-GB', {sensitivity:'base'}));
+    const rows = sortedProfiles
+      .map(p => {
+        const teamName = teamMap[p.team_id] || 'Team';
+        return `
+        <tr data-admin-profile-row data-search-text="${esc(`${p.name} ${teamName}`.toLowerCase())}">
           <td><strong>${esc(p.name)}</strong></td>
-          <td>${esc(teamMap[p.team_id] || 'Team')}</td>
+          <td>${esc(teamName)}</td>
           <td class="num">${fmt(scoreMap[p.id]?.kudos_score || 0)}</td>
           <td class="num">
             <button class="btn danger compact rep-tool-danger"
@@ -565,16 +573,27 @@ if (!READY) {
               data-profile-name="${esc(p.name)}">Delete profile</button>
           </td>
         </tr>
-      `).join('');
+      `;
+      }).join('');
 
     return `
       <div class="section-title"><h2>Profile management</h2><p>Admin only • all active profiles across KUDOS</p></div>
-      <div class="card rep-tool-card">
+      <div class="card rep-tool-card admin-scroll-card">
         <div class="notice">Showing all ${data.profiles.length} active profiles across every team. Deleting a profile permanently removes that person's challenge progress, innovation and Flight Safety submissions, submitted recognition and point adjustments. Recognition of that person is retained by name. Rep/Admin sign-in access is managed separately below.</div>
+        <div class="profile-search-row">
+          <div class="field">
+            <label for="kudos-admin-profile-search">Search profiles</label>
+            <input id="kudos-admin-profile-search" type="search" placeholder="Search by name or team…" autocomplete="off">
+          </div>
+          <div class="profile-search-count" id="kudos-admin-profile-search-count">${data.profiles.length} profiles</div>
+        </div>
         <div class="table-wrap" style="margin-top:12px">
           <table class="rep-tool-table">
             <thead><tr><th>Name</th><th>Team</th><th>KUDOS</th><th></th></tr></thead>
-            <tbody>${rows || '<tr><td colspan="4"><div class="empty compact-empty">No active profiles found.</div></td></tr>'}</tbody>
+            <tbody>
+              ${rows || '<tr><td colspan="4"><div class="empty compact-empty">No active profiles found.</div></td></tr>'}
+              <tr id="kudos-admin-profile-no-results" style="display:none"><td colspan="4"><div class="empty compact-empty">No profiles match your search.</div></td></tr>
+            </tbody>
           </table>
         </div>
       </div>
@@ -1318,6 +1337,27 @@ if (!READY) {
           });
         });
 
+
+        const profileSearch = root.querySelector('#kudos-admin-profile-search');
+        if (profileSearch) {
+          const profileRows = [...root.querySelectorAll('[data-admin-profile-row]')];
+          const countEl = root.querySelector('#kudos-admin-profile-search-count');
+          const noResults = root.querySelector('#kudos-admin-profile-no-results');
+          const applyProfileSearch = () => {
+            const query = String(profileSearch.value || '').trim().toLowerCase();
+            let visible = 0;
+            profileRows.forEach(row => {
+              const show = !query || String(row.dataset.searchText || '').includes(query);
+              row.style.display = show ? '' : 'none';
+              if (show) visible++;
+            });
+            if (countEl) countEl.textContent = query
+              ? `${visible} of ${profileRows.length} profiles`
+              : `${profileRows.length} profiles`;
+            if (noResults) noResults.style.display = visible === 0 ? '' : 'none';
+          };
+          profileSearch.addEventListener('input', applyProfileSearch);
+        }
 
         root.querySelectorAll('[data-admin-delete-profile]').forEach(btn => {
           btn.addEventListener('click', async () => {
