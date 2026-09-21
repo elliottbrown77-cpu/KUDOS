@@ -658,14 +658,25 @@ if (!READY) {
     if (error) throw error;
     if (!data?.length) throw new Error('No profile was deleted.');
 
-    if (isCurrentProfile) localStorage.removeItem('kudos_profile');
-    window.location.reload();
+    if (isCurrentProfile) {
+      localStorage.removeItem('kudos_profile');
+      window.location.reload();
+      return;
+    }
+    refreshToolsInPlace();
   }
 
   function setStatus(message, isError = false) {
     const el = document.getElementById('kudos-rep-tool-status');
     if (!el) return;
     el.innerHTML = `<div class="notice ${isError ? '' : 'success'}">${esc(message)}</div>`;
+  }
+
+  function refreshToolsInPlace(delay=120) {
+    const root = document.getElementById('kudos-rep-tools');
+    if (root) root.remove();
+    clearTimeout(scheduled);
+    scheduled = setTimeout(enhance, delay);
   }
 
   async function removeChallenge(id, title) {
@@ -691,7 +702,7 @@ if (!READY) {
 
     if (error) throw error;
     if (!data?.length) throw new Error('No challenge was deleted. Check that you have permission for this team.');
-    window.location.reload();
+    refreshToolsInPlace();
   }
 
   async function removeChallengeGroup(groupId, title) {
@@ -733,7 +744,7 @@ if (!READY) {
 
     if (error) throw error;
     if (!data?.length) throw new Error('No challenge copies were deleted.');
-    window.location.reload();
+    refreshToolsInPlace();
   }
 
   async function deleteEntry(type, id) {
@@ -810,7 +821,7 @@ if (!READY) {
 
     if (error) throw error;
     if (!inserted?.length) throw new Error('The adjustment was not recorded.');
-    window.location.reload();
+    refreshToolsInPlace();
   }
 
 
@@ -1053,7 +1064,7 @@ if (!READY) {
           String(fd.get('team_id') || '')
         );
         setAccessStatus(message);
-        setTimeout(() => window.location.reload(), 900);
+        setTimeout(() => refreshToolsInPlace(), 350);
       } catch (err) {
         if (button) button.disabled = false;
         setAccessStatus(`Could not create account: ${err.message || err}`, true);
@@ -1069,7 +1080,7 @@ if (!READY) {
           btn.disabled = true;
           await saveAccessRecord(userId, role, teamId);
           setAccessStatus('Access saved.');
-          setTimeout(() => window.location.reload(), 500);
+          setTimeout(() => refreshToolsInPlace(), 250);
         } catch (err) {
           btn.disabled = false;
           setAccessStatus(`Could not save access: ${err.message || err}`, true);
@@ -1082,7 +1093,7 @@ if (!READY) {
         try {
           btn.disabled = true;
           const changed = await revokeAccessRecord(btn.dataset.accessRevoke, btn.dataset.email || 'this account');
-          if (changed) window.location.reload();
+          if (changed) refreshToolsInPlace();
           else btn.disabled = false;
         } catch (err) {
           btn.disabled = false;
