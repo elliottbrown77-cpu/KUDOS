@@ -760,16 +760,52 @@ async function sendContributionNotification(type,fd,p){
     throw new Error('Unknown contribution type.');
   }
 
-  // Keep the structured type-specific record.
-  await postDetectedNetlifyForm(specificForm,specific);
+  const results={formFeed:false,emailDelivered:false,emailReason:''};
 
-  // Also maintain one clean combined feed for all contributions.
-  await postDetectedNetlifyForm('kudos-contributions',{
-    ...common,
-    report_type:type==='safety'?'Flight Safety':type==='recognition'?'Recognition':'Innovation',
-    subject,
-    details
-  });
+  // Keep the existing Netlify form feeds as an audit/fallback record. A failure
+  // here must not stop the routed email attempt.
+  try{
+    await postDetectedNetlifyForm(specificForm,specific);
+    await postDetectedNetlifyForm('kudos-contributions',{
+      ...common,
+      report_type:type==='safety'?'Flight Safety':type==='recognition'?'Recognition':'Innovation',
+      subject,
+      details
+    });
+    results.formFeed=true;
+  }catch(err){
+    console.error('Contribution Netlify form feed failed',err);
+  }
+
+  const emailType=type==='recognition'?'rewards':type;
+  try{
+    const response=await fetch('/api/contribution-email',{
+      method:'POST',
+      headers:{'content-type':'application/json'},
+      body:JSON.stringify({
+        type:emailType,
+        ...common,
+        subject,
+        details
+      })
+    });
+
+    let payload={};
+    try{payload=await response.json();}catch{}
+
+    if(!response.ok){
+      const reason=payload?.reason||payload?.error||`HTTP ${response.status}`;
+      throw new Error(String(reason));
+    }
+
+    results.emailDelivered=payload?.delivered===true;
+    results.emailReason=String(payload?.reason||'');
+  }catch(err){
+    results.emailReason=String(err?.message||err||'email_failed');
+    console.error('Contribution routed email failed',err);
+  }
+
+  return results;
 }
 
 async function submitSpecial(type,fd){
@@ -782,11 +818,15 @@ async function submitSpecial(type,fd){
     if(type==='safety') state.data.safety.push({id:uid('SAFE'),profile_id:p.id,category:fd.get('category'),description:fd.get('description'),external_reference:fd.get('external_reference'),date:today(),status:'submitted'});
     saveDemo();
     try{
-      await sendContributionNotification(type,fd,p);
-      state.notice='Saved. This contribution is worth 20 KUDOS points and the contribution was submitted to the Netlify contribution feed for email delivery.';
+      const delivery=await sendContributionNotification(type,fd,p);
+      state.notice=delivery.emailDelivered
+        ? 'Saved. This contribution is worth 20 KUDOS points and the configured email notification was sent.'
+        : delivery.emailReason==='no_recipients'
+          ? 'Saved. This contribution is worth 20 KUDOS points. No email recipient is currently configured for this contribution area.'
+          : 'Saved. This contribution is worth 20 KUDOS points, but the routed email was not delivered. Please tell a KUDOS administrator.';
     }catch(err){
       console.error(err);
-      state.notice='Saved in KUDOS, but the Netlify contribution record could not be submitted. Please tell a KUDOS administrator.';
+      state.notice='Saved in KUDOS, but contribution notification processing failed. Please tell a KUDOS administrator.';
     }
     closeModal();return;
   }
@@ -813,17 +853,18 @@ async function submitSpecial(type,fd){
   const {error}=await q;
   if(error) throw error;
 
-  let emailSubmitted=true;
+  let delivery=null;
   try{
-    await sendContributionNotification(type,fd,p);
+    delivery=await sendContributionNotification(type,fd,p);
   }catch(err){
-    console.error('Contribution saved but Netlify notification failed',err);
-    emailSubmitted=false;
+    console.error('Contribution saved but notification processing failed',err);
   }
 
-  state.notice=emailSubmitted
-    ? 'Saved. This contribution is worth 20 KUDOS points and the contribution was submitted to the Netlify contribution feed for email delivery.'
-    : 'Saved in KUDOS, but the Netlify contribution record could not be submitted. Please tell a KUDOS administrator.';
+  state.notice=delivery?.emailDelivered
+    ? 'Saved. This contribution is worth 20 KUDOS points and the configured email notification was sent.'
+    : delivery?.emailReason==='no_recipients'
+      ? 'Saved. This contribution is worth 20 KUDOS points. No email recipient is currently configured for this contribution area.'
+      : 'Saved in KUDOS. This contribution is worth 20 KUDOS points, but the routed email was not delivered. Please tell a KUDOS administrator.';
   await refresh();
 }
 
