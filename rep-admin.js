@@ -141,7 +141,7 @@ if (!READY) {
   async function loadTeamData(teamId) {
     const [profilesRes, challengesRes, scoresRes, adjustmentsRes] = await Promise.all([
       db.from('profiles').select('id,name,team_id,active').eq('team_id', teamId).eq('active', true).order('name'),
-      db.from('challenges').select('id,title,target,unit,source_type,start_date,end_date,active,team_id,challenge_group_id').eq('team_id', teamId).eq('active', true).order('start_date'),
+      db.from('challenges').select('id,title,description,target,unit,source_type,start_date,end_date,active,team_id,challenge_group_id').eq('team_id', teamId).eq('active', true).order('start_date'),
       db.from('profile_scores').select('profile_id,name,team_id,kudos_score,adjustment_points').eq('team_id', teamId).order('name'),
       db.from('kudos_point_adjustments').select('id,profile_id,team_id,points_delta,reason,created_at,created_by').eq('team_id', teamId).order('created_at', { ascending: false })
     ]);
@@ -304,6 +304,7 @@ if (!READY) {
           </div>
         </td>
       </tr>
+      ${isFullAdmin ? `<tr data-challenge-edit-row="${esc(c.id)}" style="display:none"><td colspan="3">${challengeEditForm(c)}</td></tr>` : ''}
     `).join('');
 
     return `
@@ -693,7 +694,7 @@ if (!READY) {
     scheduled = setTimeout(enhance, delay);
   }
 
-  async function editChallenge(id) {
+  async function editChallenge(id, form) {
     const ctx = await getContext();
     if (ctx.appUser?.role !== 'admin') throw new Error('Administrator permission is required.');
 
@@ -704,57 +705,72 @@ if (!READY) {
       .single();
     if (loadError) throw loadError;
 
-    const title = window.prompt('Challenge title:', String(challenge.title || ''));
-    if (title === null) return false;
+    const fd = new FormData(form);
+    const title = String(fd.get('title') || '').trim();
+    const description = String(fd.get('description') || '').trim();
+    const target = Number(fd.get('target'));
+    const unit = String(fd.get('unit') || '').trim();
+    const startDate = String(fd.get('start_date') || '');
+    const endDate = String(fd.get('end_date') || '');
+    const scope = String(fd.get('scope') || 'team');
 
-    const description = window.prompt('Description:', String(challenge.description || ''));
-    if (description === null) return false;
-
-    const targetRaw = window.prompt('Target:', String(challenge.target ?? ''));
-    if (targetRaw === null) return false;
-    const target = Number(targetRaw);
+    if (!title) throw new Error('Challenge title is required.');
     if (!Number.isFinite(target) || target <= 0) throw new Error('Target must be a number greater than zero.');
-
-    const unit = window.prompt('Unit:', String(challenge.unit || ''));
-    if (unit === null) return false;
-
-    const startDate = window.prompt('Start date (YYYY-MM-DD):', String(challenge.start_date || ''));
-    if (startDate === null) return false;
-
-    const endDate = window.prompt('End date (YYYY-MM-DD):', String(challenge.end_date || ''));
-    if (endDate === null) return false;
-
+    if (!unit) throw new Error('Unit is required.');
     if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
       throw new Error('Start and end dates must use YYYY-MM-DD.');
     }
     if (endDate < startDate) throw new Error('End date cannot be before the start date.');
 
     const updates = {
-      title: title.trim(),
-      description: description.trim(),
+      title,
+      description,
       target,
-      unit: unit.trim(),
+      unit,
       start_date: startDate,
       end_date: endDate
     };
 
-    let applyAll = false;
-    if (challenge.challenge_group_id) {
-      applyAll = window.confirm(
-        'Apply these changes to ALL team copies of this shared challenge?\n\nChoose OK for all teams, or Cancel to update only the currently selected team.'
-      );
+    let q = db.from('challenges').update(updates);
+    if (scope === 'all' && challenge.challenge_group_id) {
+      q = q.eq('challenge_group_id', challenge.challenge_group_id);
+    } else {
+      q = q.eq('id', id);
     }
 
-    let q = db.from('challenges').update(updates);
-    q = applyAll
-      ? q.eq('challenge_group_id', challenge.challenge_group_id)
-      : q.eq('id', id);
-
-    const { data, error } = await q.select('id');
+    const { data, error } = await q.select('id,title,target,unit,start_date,end_date');
     if (error) throw error;
     if (!data?.length) throw new Error('No challenge was updated.');
 
-    return true;
+    return data.length;
+  }
+
+  function challengeEditForm(challenge) {
+    const shared = Boolean(challenge.challenge_group_id);
+    return `
+      <form class="challenge-edit-form" data-challenge-edit-form="${esc(challenge.id)}" style="display:none;margin-top:12px;padding:14px;border:1px solid rgba(12,35,56,.12);border-radius:12px">
+        <div class="grid two">
+          <div class="field"><label>Title</label><input name="title" required value="${esc(challenge.title || '')}"></div>
+          <div class="field"><label>Target</label><input name="target" type="number" step="any" min="0.0001" required value="${esc(challenge.target)}"></div>
+          <div class="field"><label>Unit</label><input name="unit" required value="${esc(challenge.unit || '')}"></div>
+          <div class="field"><label>Start date</label><input name="start_date" type="date" required value="${esc(challenge.start_date || '')}"></div>
+          <div class="field"><label>End date</label><input name="end_date" type="date" required value="${esc(challenge.end_date || '')}"></div>
+        </div>
+        <div class="field"><label>Description</label><textarea name="description">${esc(challenge.description || '')}</textarea></div>
+        ${shared ? `<div class="field">
+          <label>Apply changes to</label>
+          <select name="scope">
+            <option value="team">Selected team only</option>
+            <option value="all">All teams using this shared challenge</option>
+          </select>
+        </div>` : '<input type="hidden" name="scope" value="team">'}
+        <div class="rep-tool-actions">
+          <button class="btn primary compact" type="submit">Save changes</button>
+          <button class="btn ghost compact" type="button" data-cancel-challenge-edit="${esc(challenge.id)}">Cancel</button>
+        </div>
+        <div class="rep-tool-status" data-challenge-edit-status="${esc(challenge.id)}"></div>
+      </form>
+    `;
   }
 
   async function removeChallenge(id, title) {
@@ -1449,15 +1465,40 @@ if (!READY) {
         });
 
         root.querySelectorAll('[data-admin-edit-challenge]').forEach(btn => {
-          btn.addEventListener('click', async () => {
+          btn.addEventListener('click', () => {
+            const id = btn.dataset.adminEditChallenge;
+            const row = root.querySelector(`[data-challenge-edit-row="${CSS.escape(id)}"]`);
+            const form = root.querySelector(`[data-challenge-edit-form="${CSS.escape(id)}"]`);
+            if (row) row.style.display = '';
+            if (form) form.style.display = '';
+          });
+        });
+
+        root.querySelectorAll('[data-cancel-challenge-edit]').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const id = btn.dataset.cancelChallengeEdit;
+            const row = root.querySelector(`[data-challenge-edit-row="${CSS.escape(id)}"]`);
+            const form = root.querySelector(`[data-challenge-edit-form="${CSS.escape(id)}"]`);
+            if (row) row.style.display = 'none';
+            if (form) form.style.display = 'none';
+          });
+        });
+
+        root.querySelectorAll('[data-challenge-edit-form]').forEach(form => {
+          form.addEventListener('submit', async e => {
+            e.preventDefault();
+            const id = form.dataset.challengeEditForm;
+            const status = root.querySelector(`[data-challenge-edit-status="${CSS.escape(id)}"]`);
+            const button = form.querySelector('button[type="submit"]');
             try {
-              btn.disabled = true;
-              const changed = await editChallenge(btn.dataset.adminEditChallenge);
-              if (changed) refreshToolsInPlace();
-              else btn.disabled = false;
+              if (button) button.disabled = true;
+              if (status) status.innerHTML = '<div class="notice">Saving challenge…</div>';
+              const count = await editChallenge(id, form);
+              if (status) status.innerHTML = `<div class="notice success">Saved. Updated ${count} challenge cop${count === 1 ? 'y' : 'ies'}.</div>`;
+              setTimeout(() => refreshToolsInPlace(), 350);
             } catch (err) {
-              btn.disabled = false;
-              setStatus(`Could not edit challenge: ${err.message || err}`, true);
+              if (button) button.disabled = false;
+              if (status) status.innerHTML = `<div class="notice">${esc(err.message || err)}</div>`;
             }
           });
         });
