@@ -130,12 +130,16 @@ if (!READY) {
   async function getTeams() {
     const { data, error } = await db
       .from('teams')
-      .select('id,name,display_order,active')
+      .select('id,name,nickname,display_order,active')
       .eq('active', true)
       .order('display_order')
       .order('name');
     if (error) throw error;
-    return data || [];
+    return (data || []).map(t => ({
+      ...t,
+      canonical_name: t.name,
+      name: t.nickname && t.nickname !== t.name ? `${t.name} — ${t.nickname}` : t.name
+    }));
   }
 
   async function loadTeamData(teamId) {
@@ -289,6 +293,55 @@ if (!READY) {
       }
     `;
     document.head.appendChild(style);
+  }
+
+  function renderTeamNamesSection(teams, isFullAdmin=false) {
+    if (!isFullAdmin) return '';
+    const rows = teams.map(t => `
+      <tr>
+        <td><strong>${esc(t.canonical_name || t.name)}</strong></td>
+        <td>
+          <input
+            class="access-password-input"
+            style="max-width:none;min-width:220px"
+            data-team-nickname="${esc(t.id)}"
+            value="${esc(t.nickname || '')}"
+            placeholder="Add team name"
+          >
+        </td>
+        <td class="num">
+          <button class="btn primary compact" data-save-team-nickname="${esc(t.id)}">Save</button>
+        </td>
+      </tr>
+    `).join('');
+
+    return `
+      <div class="section-title"><h2>Team names</h2><p>Keep Team 1–8 as the permanent team identity and add a display name</p></div>
+      <div class="card rep-tool-card">
+        <div class="notice">The underlying Team 1–8 identity is retained for profiles, challenges and reporting. The added name is shown alongside it throughout KUDOS.</div>
+        <div class="table-wrap" style="margin-top:12px">
+          <table class="rep-tool-table">
+            <thead><tr><th>Team</th><th>Display name</th><th></th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+        <div id="kudos-team-name-status" class="rep-tool-status"></div>
+      </div>
+    `;
+  }
+
+  async function saveTeamNickname(teamId, nickname) {
+    const ctx = await getContext();
+    if (ctx.appUser?.role !== 'admin') throw new Error('Administrator permission is required.');
+    const clean = String(nickname || '').trim();
+    const { data, error } = await db
+      .from('teams')
+      .update({ nickname: clean })
+      .eq('id', teamId)
+      .select('id,nickname');
+    if (error) throw error;
+    if (!data?.length) throw new Error('Team name was not updated.');
+    return data[0];
   }
 
   function renderChallengeSection(data, isFullAdmin=false) {
@@ -1460,6 +1513,7 @@ if (!READY) {
                 </select>
               </div>` : ''}
           </div>
+          ${renderTeamNamesSection(teams, isGlobalAdmin)}
           ${renderChallengeSection(data, mode === 'admin')}
           ${renderEntrySection(moderationData, teams, isGlobalAdmin)}
           ${renderContributionQueues(contributionData, teams, isGlobalAdmin)}
@@ -1473,6 +1527,24 @@ if (!READY) {
           localStorage.setItem('kudos_rep_tools_team', e.target.value);
           document.getElementById('kudos-rep-tools')?.remove();
           schedule();
+        });
+
+        root.querySelectorAll('[data-save-team-nickname]').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            const id = btn.dataset.saveTeamNickname;
+            const input = root.querySelector(`[data-team-nickname="${CSS.escape(id)}"]`);
+            const status = root.querySelector('#kudos-team-name-status');
+            try {
+              btn.disabled = true;
+              if (status) status.innerHTML = '<div class="notice">Saving team name…</div>';
+              await saveTeamNickname(id, input?.value || '');
+              if (status) status.innerHTML = '<div class="notice success">Team name saved.</div>';
+              setTimeout(() => refreshToolsInPlace(), 250);
+            } catch (err) {
+              btn.disabled = false;
+              if (status) status.innerHTML = `<div class="notice">${esc(err.message || err)}</div>`;
+            }
+          });
         });
 
         root.querySelectorAll('[data-admin-edit-challenge]').forEach(btn => {
