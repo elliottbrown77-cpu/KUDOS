@@ -87,7 +87,11 @@ async function loadSupabase(){
   const cPsfs = {};
   challengePsfs.data.forEach(x => (cPsfs[x.challenge_id] ||= []).push(psfMap[x.psf_id]));
   return {
-    teams:teams.data, profiles:profiles.data,
+    teams:(teams.data||[]).map(t=>({
+      ...t,
+      canonical_name:t.name,
+      name:t.nickname && t.nickname!==t.name ? `${t.name} — ${t.nickname}` : t.name
+    })), profiles:profiles.data,
     challenges:challenges.data.map(c=>({...c,psfs:cPsfs[c.id]||[]})),
     challengeProgress:challengeProgress.data,
     profileTotals:profileTotals.data,
