@@ -295,9 +295,10 @@ if (!READY) {
     document.head.appendChild(style);
   }
 
-  function renderTeamNamesSection(teams, isFullAdmin=false) {
-    if (!isFullAdmin) return '';
-    const rows = teams.map(t => `
+  function renderTeamNamesSection(teams, ctx, teamId, isFullAdmin=false) {
+    const visibleTeams = isFullAdmin ? teams : teams.filter(t => t.id === teamId);
+    if (!visibleTeams.length) return '';
+    const rows = visibleTeams.map(t => `
       <tr>
         <td><strong>${esc(t.canonical_name || t.name)}</strong></td>
         <td>
@@ -316,9 +317,9 @@ if (!READY) {
     `).join('');
 
     return `
-      <div class="section-title"><h2>Team names</h2><p>Keep Team 1–8 as the permanent team identity and add a display name</p></div>
+      <div class="section-title"><h2>Team names</h2><p>${isFullAdmin ? 'Manage display names for all teams' : 'Manage your team display name'}</p></div>
       <div class="card rep-tool-card">
-        <div class="notice">The underlying Team 1–8 identity is retained for profiles, challenges and reporting. The added name is shown alongside it throughout KUDOS.</div>
+        <div class="notice">The underlying Team 1–8 identity is retained for profiles, challenges and reporting. ${isFullAdmin ? 'Admins can edit all team display names.' : 'Reps can edit only their assigned team.'}</div>
         <div class="table-wrap" style="margin-top:12px">
           <table class="rep-tool-table">
             <thead><tr><th>Team</th><th>Display name</th><th></th></tr></thead>
@@ -332,7 +333,9 @@ if (!READY) {
 
   async function saveTeamNickname(teamId, nickname) {
     const ctx = await getContext();
-    if (ctx.appUser?.role !== 'admin') throw new Error('Administrator permission is required.');
+    const role = ctx.appUser?.role;
+    if (!['admin','rep'].includes(role)) throw new Error('Rep or Administrator permission is required.');
+    if (role === 'rep' && ctx.appUser?.team_id !== teamId) throw new Error('Reps can only rename their own team.');
     const clean = String(nickname || '').trim();
     const { data, error } = await db
       .from('teams')
@@ -1513,7 +1516,7 @@ if (!READY) {
                 </select>
               </div>` : ''}
           </div>
-          ${renderTeamNamesSection(teams, isGlobalAdmin)}
+          ${renderTeamNamesSection(teams, ctx, teamId, isGlobalAdmin)}
           ${renderChallengeSection(data, mode === 'admin')}
           ${renderEntrySection(moderationData, teams, isGlobalAdmin)}
           ${renderContributionQueues(contributionData, teams, isGlobalAdmin)}
