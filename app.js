@@ -323,8 +323,8 @@ function logView(challengeId=''){
   const selected=challengeId||state.challengeFilter!=='all'?challengeId||state.challengeFilter:'';
   return `<div class="section-title"><h2>Log KUDOS progress</h2><p>One action • one measure • one team target</p></div><div class="card form-card">
   <form id="progressForm"><div class="field"><label>Profile</label><input value="${esc(p?.name||'')}" disabled><div class="help">Profile is remembered on this device.</div></div>
-  <div class="field"><label>Challenge</label><select name="challenge_id" required><option value="">Choose challenge</option>${cs.map(c=>`<option value="${c.id}" ${c.id===selected?'selected':''}>${esc(c.title)} — ${esc(c.unit)}</option>`).join('')}</select></div>
-  <div class="field"><label>Value</label><input name="value" type="number" step="any" min="0" required placeholder="Enter your contribution"></div>
+  <div class="field"><label>Challenge</label><select id="progressLogChallenge" name="challenge_id" required><option value="">Choose challenge</option>${cs.map(c=>`<option value="${c.id}" ${c.id===selected?'selected':''}>${esc(c.title)} — ${esc(c.unit)}</option>`).join('')}</select></div>
+  <div class="field"><label>Value</label><input id="progressLogValue" name="value" type="number" step="any" min="0" required placeholder="Enter your contribution"><div id="progressLogValueHelp" class="help"></div></div>
   <div class="field"><label>Date</label><input name="date" type="date" value="${today()}" required></div>
   <div class="field"><label>Note <span class="help">optional</span></label><textarea name="note" placeholder="Short context if useful"></textarea></div>
   <button class="btn primary" type="submit">Add to team progress</button></form></div>`;
@@ -417,9 +417,14 @@ function progressCommentsBox(challengeIds, profileId=null) {
 
 function progressView(){
   const p=currentProfile(); const team=state.teamFilter||p?.team_id;
-  const selectedProfile=state.profileFilter||p?.id;
+  const profiles=state.data.profiles.filter(x=>x.team_id===team);
+  let selectedProfile=state.profileFilter||p?.id||'';
+  if(!profiles.some(x=>x.id===selectedProfile)){
+    selectedProfile = (p?.team_id===team ? p.id : '') || profiles[0]?.id || '';
+    state.profileFilter = selectedProfile;
+  }
   const teamOpts=state.data.teams.map(t=>`<option value="${t.id}" ${t.id===team?'selected':''}>${esc(t.name)}</option>`).join('');
-  const profiles=state.data.profiles.filter(x=>x.team_id===team); const profileOpts=profiles.map(x=>`<option value="${x.id}" ${x.id===selectedProfile?'selected':''}>${esc(x.name)}</option>`).join('');
+  const profileOpts=profiles.map(x=>`<option value="${x.id}" ${x.id===selectedProfile?'selected':''}>${esc(x.name)}</option>`).join('');
   const cs=activeTeamChallenges(team); const selected=state.challengeFilter==='all'?cs[0]:cs.find(c=>c.id===state.challengeFilter)||cs[0];
   const commentsProfile = state.progressMode==='individual' ? selectedProfile : null;
   const commentChallengeIds = state.challengeFilter==='all' ? cs.map(c=>c.id) : (selected ? [selected.id] : []);
@@ -750,6 +755,10 @@ async function submitProfile(fd){
 
 async function submitProgress(fd){
   const p=currentProfile(); const record={id:uid('PU'),profile_id:p.id,challenge_id:fd.get('challenge_id'),value:Number(fd.get('value')),date:fd.get('date'),note:String(fd.get('note')||'').trim()};
+  const challenge=challengeById(record.challenge_id);
+  if(challenge?.challenge_group_id==='14925ec9-8cda-4371-96a5-7c666439411f' && record.value!==1){
+    throw new Error('Recovery Nights can only be logged one night at a time. Enter 1 for each qualifying night.');
+  }
   if(state.mode==='demo'){state.data.progress.push(record);saveDemo();state.notice='Saved. Your contribution has been added to the team total.';state.view='progress';state.challengeFilter=record.challenge_id;render();return;}
   const {error}=await supabase.from('progress_entries').insert({profile_id:record.profile_id,challenge_id:record.challenge_id,value:record.value,entry_date:record.date,note:record.note});
   if(error){
@@ -984,6 +993,30 @@ function bind(){
   document.getElementById('reportChallenge')?.addEventListener('change',e=>{state.reportChallengeKey=e.target.value;render()});
   document.getElementById('adminLoginForm')?.addEventListener('submit',async e=>{e.preventDefault();try{await submitAdminLogin(new FormData(e.target))}catch(err){state.notice=`Could not sign in: ${err.message||err}`;render()}});
   document.getElementById('profileForm')?.addEventListener('submit',async e=>{e.preventDefault();try{await submitProfile(new FormData(e.target))}catch(err){state.notice=`Could not save: ${err.message||err}`;render()}});
+  const syncProgressLogValueRules=()=>{
+    const select=document.getElementById('progressLogChallenge');
+    const input=document.getElementById('progressLogValue');
+    const help=document.getElementById('progressLogValueHelp');
+    if(!select||!input) return;
+    const challenge=challengeById(select.value);
+    const isRecovery=challenge?.challenge_group_id==='14925ec9-8cda-4371-96a5-7c666439411f';
+    if(isRecovery){
+      input.value='1';
+      input.min='1';
+      input.max='1';
+      input.step='1';
+      input.readOnly=true;
+      if(help) help.textContent='Recovery Nights are logged one night at a time.';
+    }else{
+      input.removeAttribute('max');
+      input.min='0';
+      input.step='any';
+      input.readOnly=false;
+      if(help) help.textContent='';
+    }
+  };
+  document.getElementById('progressLogChallenge')?.addEventListener('change',syncProgressLogValueRules);
+  syncProgressLogValueRules();
   document.getElementById('progressForm')?.addEventListener('submit',async e=>{
     e.preventDefault();
     const button=e.target.querySelector('button[type="submit"]');
