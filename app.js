@@ -620,7 +620,7 @@ function adminEntryRows(){
     creator:entryCreator(x.profile_id),
     date:x.entry_date||x.created_at?.slice(0,10)||'',
     headline:x.title||'Innovation',
-    detail:shortText(x.description,180)
+    detail:`${x.category ? `[${x.category}] ` : ''}${shortText(x.description,180)}`
   }));
   (a.safety||[]).forEach(x=>rows.push({
     id:x.id,type:'safety',label:'Flight Safety',
@@ -695,6 +695,12 @@ function specialModal(type){
   if(type==='innovation') return `<div class="modal-backdrop" id="modal"><div class="modal"><h2>Submit an innovation</h2>
     <div class="creator-strip"><strong>Submitted by:</strong> ${creator}</div>
     <form id="specialForm" data-type="innovation">
+      <div class="field"><label>Category</label><select name="category" required>
+        <option value="">Choose category…</option>
+        <option value="Process Improvement">Process Improvement</option>
+        <option value="Power Platform">Power Platform</option>
+        <option value="Tool Improvement (3D Printing)">Tool Improvement (3D Printing)</option>
+      </select></div>
       <div class="field"><label>Title</label><input name="title" required maxlength="180" placeholder="Short, clear idea"></div>
       <div class="field"><label>Description</label><textarea name="description" required maxlength="4000" placeholder="What could be better and what do you suggest?"></textarea></div>
       <button class="btn primary" type="submit">Submit idea (+20 KUDOS)</button>
@@ -823,11 +829,12 @@ async function sendContributionNotification(type,fd,p){
     details=`Nominated person: ${nominee}\nReason: ${reason}`;
   } else if(type==='innovation'){
     specificForm='kudos-innovation';
+    const category=String(fd.get('category')||'');
     const title=String(fd.get('title')||'');
     const description=String(fd.get('description')||'');
-    specific={...specific,title,description};
-    subject=`Innovation — ${title||'Idea'}`;
-    details=`Title: ${title}\nDescription: ${description}`;
+    subject=`Innovation — ${category||'Uncategorised'} — ${title||'Idea'}`;
+    specific={...specific,category,title,description,subject};
+    details=`Category: ${category}\nTitle: ${title}\nDescription: ${description}`;
   } else {
     throw new Error('Unknown contribution type.');
   }
@@ -886,7 +893,7 @@ async function submitSpecial(type,fd){
 
   if(state.mode==='demo'){
     if(type==='recognition') state.data.recognition.push({id:uid('REC'),submitter_profile_id:p.id,recognised_profile_id:null,nominated_person:fd.get('nominated_person'),reason:fd.get('reason'),date:today(),status:'submitted'});
-    if(type==='innovation') state.data.innovation.push({id:uid('INN'),profile_id:p.id,title:fd.get('title'),description:fd.get('description'),date:today(),status:'submitted'});
+    if(type==='innovation') state.data.innovation.push({id:uid('INN'),profile_id:p.id,category:fd.get('category'),title:fd.get('title'),description:fd.get('description'),date:today(),status:'submitted'});
     if(type==='safety') state.data.safety.push({id:uid('SAFE'),profile_id:p.id,category:fd.get('category'),description:fd.get('description'),external_reference:fd.get('external_reference'),date:today(),status:'submitted'});
     saveDemo();
     try{
@@ -912,6 +919,7 @@ async function submitSpecial(type,fd){
   });
   if(type==='innovation') q=supabase.from('innovation_entries').insert({
     profile_id:p.id,
+    category:String(fd.get('category')||'').trim(),
     title:String(fd.get('title')||'').trim(),
     description:String(fd.get('description')||'').trim()
   });
