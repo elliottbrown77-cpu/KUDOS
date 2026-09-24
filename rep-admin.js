@@ -218,7 +218,7 @@ if (!READY) {
       person: profileMap[x.profile_id]?.name || 'Unknown profile',
       date: x.entry_date || String(x.created_at || '').slice(0, 10),
       title: x.title || 'Innovation',
-      detail: x.description || ''
+      detail: `${x.category ? `[${x.category}] ` : ''}${x.description || ''}`
     }));
 
     data.entries.safety.forEach(x => rows.push({
@@ -512,6 +512,7 @@ if (!READY) {
         <td>${esc(contributionDate(x))}</td>
         <td><strong>${esc(profileMap[x.profile_id]?.name || 'Profile')}</strong></td>
         ${global ? `<td>${teamCell(x.profile_id)}</td>` : ''}
+        <td>${esc(x.category || 'Uncategorised')}</td>
         <td>${esc(x.title || 'Innovation')}</td>
         <td class="detail">${esc(x.description || '')}</td>
         ${global ? `<td class="num"><button class="btn danger compact rep-tool-danger" data-rep-delete-entry="${esc(x.id)}" data-entry-type="innovation">Delete</button></td>` : ''}
@@ -550,7 +551,7 @@ if (!READY) {
       <div class="card rep-tool-card admin-scroll-card">
         <div class="eyebrow">INNOVATION</div>
         <h3 style="margin:.25rem 0 12px">Innovation contributions</h3>
-        ${table(global ? ['Date','Submitted by','Team','Idea','Detail',''] : ['Date','Submitted by','Idea','Detail'], innovationRows, 'No Innovation contributions found.')}
+        ${table(global ? ['Date','Submitted by','Team','Category','Idea','Detail',''] : ['Date','Submitted by','Category','Idea','Detail'], innovationRows, 'No Innovation contributions found.')}
       </div>
 
       <div class="card rep-tool-card admin-scroll-card">
@@ -1003,13 +1004,20 @@ if (!READY) {
     }
 
     if (type === 'innovation') {
+      const category = window.prompt(
+        'Innovation category:\n\nProcess Improvement\nPower Platform\nTool Improvement (3D Printing)',
+        String(row.category || 'Process Improvement')
+      );
+      if (category === null) return false;
+      const allowedCategories = ['Process Improvement','Power Platform','Tool Improvement (3D Printing)'];
+      if (!allowedCategories.includes(category.trim())) throw new Error('Choose one of the listed Innovation categories exactly.');
       const title = window.prompt('Innovation title:', String(row.title || ''));
       if (title === null) return false;
       const date = window.prompt('Entry date (YYYY-MM-DD):', String(row.entry_date || ''));
       if (date === null) return false;
       const description = window.prompt('Description:', String(row.description || ''));
       if (description === null) return false;
-      updates = { title: title.trim(), entry_date: date, description: description.trim() };
+      updates = { category: category.trim(), title: title.trim(), entry_date: date, description: description.trim() };
     }
 
     if (type === 'safety') {
