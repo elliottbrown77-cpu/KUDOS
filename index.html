@@ -70,8 +70,9 @@
 
   <form name="kudos-innovation" method="POST" data-netlify="true" data-netlify-honeypot="bot-field" class="netlify-static-form" style="display:none!important" aria-hidden="true">
     <input type="hidden" name="form-name" value="kudos-innovation">
+    <input type="hidden" name="subject" data-remove-prefix>
     <input type="text" name="bot-field" tabindex="-1" autocomplete="off">
-    <input name="submitted_by"><input name="submitter_profile_code"><input name="submitter_profile_id"><input name="submitter_team"><input name="submission_date"><input name="title"><textarea name="description"></textarea><input name="site_url">
+    <input name="submitted_by"><input name="submitter_profile_code"><input name="submitter_profile_id"><input name="submitter_team"><input name="submission_date"><input name="category"><input name="title"><textarea name="description"></textarea><input name="site_url">
   </form>
 
   <form name="kudos-contributions" method="POST" data-netlify="true" data-netlify-honeypot="bot-field" class="netlify-static-form" style="display:none!important" aria-hidden="true">
@@ -85,11 +86,11 @@
     const cfg = window.KUDOS_CONFIG || {};
 
     async function loadKudosApp() {
-      await import('./app.js?v=team-names-1');
+      await import('./app.js?v=innovation-categories-1');
       await import('./profile-team-first.js?v=team-first-1');
       await import('./home-challenges.js?v=home-all-1');
       await import('./challenge-teams.js?v=team-selector-2');
-      await import('./rep-admin.js?v=rep-admin-27');
+      await import('./rep-admin.js?v=rep-admin-28');
       await import('./push-notifications.js?v=push-reminders-5');
     }
 
