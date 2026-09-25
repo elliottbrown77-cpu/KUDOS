@@ -69,8 +69,8 @@ Supporting copy:
 |---|---|
 | Team | Group |
 | Teams | Groups |
-| Challenge | Activity |
-| Challenges | Activities |
+| Challenge | Challenge |
+| Challenges | Challenges |
 | Performance Rep | Group Lead |
 | Admin | NSN Admin |
 | Recognition | Recognition |
@@ -81,7 +81,7 @@ These labels are stored as workspace configuration and should be rendered dynami
 ## Modules
 
 ### Enabled initially
-- Activities / progress
+- Challenges / progress
 - Recognition
 - Ideas
 - Group and individual leaderboards
@@ -166,15 +166,15 @@ Mobile:
 ### 3. Home
 Recommended card order:
 1. My KUDOS
-2. Current NSN Activities
+2. Current NSN Challenges
 3. Recognition
 4. Ideas
 5. Group position / network activity
 
 Avoid CHF-specific headings such as PSF coverage or Fight Tonight.
 
-### 4. Activities
-Same KUDOS challenge engine underneath, labelled `Activities`.
+### 4. Challenges
+Same KUDOS challenge engine underneath, labelled `Challenges`.
 
 Examples could include:
 - mentoring participation
@@ -279,7 +279,7 @@ Activate NSN workspace, enable its own URL/path and complete access/RLS testing.
 
 ## Design principle
 
-NSN should feel like its own product to the user, while technically remaining a tenant/workspace on the shared KUDOS platform.
+NSN should feel like its own product to the user, while technically remaining a tenant/workspace on the shared KUDOS platform. The core proposition is women supporting each other to build healthy, sustainable lifestyles through shared challenges, encouragement and recognition.
 
 The target experience is:
 
