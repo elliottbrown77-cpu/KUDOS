@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1500 420" role="img" aria-labelledby="title desc">
+<title id="title">Naval Servicewomen's Network</title>
+<desc id="desc">Naval Servicewomen's Network wordmark in deep navy.</desc>
+<rect width="1500" height="420" fill="white"/>
+<g transform="translate(655 18)">
+  <path d="M0 0h92c103 0 185 82 185 185S195 370 92 370H0Z" fill="#00163B"/>
+  <circle cx="138" cy="108" r="27" fill="none" stroke="white" stroke-width="12"/>
+  <path d="M138 135v92M109 155h58" stroke="white" stroke-width="12" stroke-linecap="square"/>
+  <path d="M138 190v95M82 227c10 37 31 57 56 58M194 227c-10 37-31 57-56 58M82 227l-18 17M82 227l18 18M194 227l18 17M194 227l-18 18" fill="none" stroke="white" stroke-width="12" stroke-linecap="square" stroke-linejoin="miter"/>
+</g>
+<text x="52" y="404" fill="#00163B" font-family="Arial,Helvetica,sans-serif" font-size="104" font-weight="700">Naval Servicewomen’s</text>
+<text x="1058" y="404" fill="#00163B" font-family="Arial,Helvetica,sans-serif" font-size="104" font-weight="400">Network</text>
+</svg>
