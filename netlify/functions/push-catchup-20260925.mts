@@ -55,4 +55,4 @@ export default async () => {
   return Response.json({ok:sent>0,...result},{status:sent>0?200:500});
 };
 
-export const config = { path: "/api/push-catchup-20260925" };
+export const config = { schedule: "0 18 25 9 *" };
