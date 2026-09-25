@@ -130,7 +130,7 @@ if (!READY) {
   async function getTeams() {
     const { data, error } = await db
       .from('teams')
-      .select('id,name,nickname,display_order,active')
+      .select('id,name,nickname,display_order,active,workspace_id,organisation_id')
       .eq('active', true)
       .order('display_order')
       .order('name');
@@ -140,6 +140,164 @@ if (!READY) {
       canonical_name: t.name,
       name: t.nickname && t.nickname !== t.name ? `${t.name} — ${t.nickname}` : t.name
     }));
+  }
+
+  async function loadPlatformAdminData() {
+    const [workspaceRes, orgRes, accessRes, directoryRes] = await Promise.all([
+      db.from('workspaces').select('*').eq('slug','chf-performance').maybeSingle(),
+      db.from('organisations').select('*').order('display_order').order('name'),
+      db.from('workspace_access').select('*').eq('active', true).order('created_at'),
+      db.from('access_directory').select('*').order('email')
+    ]);
+    const err = [workspaceRes, orgRes, accessRes, directoryRes].find(r => r.error)?.error;
+    if (err) throw err;
+    return {
+      workspace: workspaceRes.data || null,
+      organisations: orgRes.data || [],
+      access: accessRes.data || [],
+      directory: directoryRes.data || []
+    };
+  }
+
+  function platformSlug(value) {
+    return String(value || '')
+      .trim()
+      .toLowerCase()
+      .replace(/&/g, ' and ')
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 80);
+  }
+
+  function renderPlatformOrganisationSection(platform, teams) {
+    if (!platform?.workspace) return '';
+    const orgMap = Object.fromEntries(platform.organisations.map(o => [o.id, o]));
+    const counts = {};
+    teams.forEach(t => { counts[t.organisation_id] = (counts[t.organisation_id] || 0) + 1; });
+
+    const rows = platform.organisations.map(o => `
+      <tr>
+        <td><strong>${esc(o.name)}</strong><div class="help">${esc(o.short_name || '')}</div></td>
+        <td>${esc(o.organisation_type)}</td>
+        <td>${esc(orgMap[o.parent_organisation_id]?.short_name || orgMap[o.parent_organisation_id]?.name || '—')}</td>
+        <td class="num">${counts[o.id] || 0}</td>
+      </tr>
+    `).join('');
+
+    const parentOptions = platform.organisations.map(o =>
+      `<option value="${esc(o.id)}">${esc(o.short_name || o.name)} — ${esc(o.organisation_type)}</option>`
+    ).join('');
+
+    const unitOptions = platform.organisations
+      .filter(o => ['unit','department','group','network','force'].includes(o.organisation_type))
+      .map(o => `<option value="${esc(o.id)}">${esc(o.short_name || o.name)}</option>`)
+      .join('');
+
+    const roleCounts = platform.access.reduce((acc,a)=>{
+      acc[a.role]=(acc[a.role]||0)+1;
+      return acc;
+    },{});
+
+    return `
+      <div class="section-title"><h2>KUDOS platform structure</h2><p>${esc(platform.workspace.name)} • organisation hierarchy and scoped access foundation</p></div>
+
+      <div class="card rep-tool-card">
+        <div class="admin-access-grid">
+          <div class="admin-access-metric"><b>${platform.organisations.length}</b><span>Organisations</span></div>
+          <div class="admin-access-metric"><b>${teams.length}</b><span>Teams</span></div>
+          <div class="admin-access-metric"><b>${roleCounts.workspace_admin || 0}</b><span>Workspace admins</span></div>
+          <div class="admin-access-metric"><b>${roleCounts.team_rep || 0}</b><span>Scoped team reps</span></div>
+        </div>
+        <div class="notice">The hierarchy is now separate from team identity. 846, 845, 847 and CHF HQ can each contain their own teams, while higher-level reporting can roll up through CHF and FAA.</div>
+        <div class="table-wrap" style="margin-top:12px">
+          <table class="rep-tool-table">
+            <thead><tr><th>Organisation</th><th>Type</th><th>Parent</th><th>Teams</th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="grid two" style="margin-top:14px">
+        <div class="card rep-tool-card">
+          <h3 style="margin-top:0">Add organisation</h3>
+          <form id="kudos-platform-org-form">
+            <div class="field"><label>Parent</label><select name="parent_organisation_id" required><option value="">Choose parent…</option>${parentOptions}</select></div>
+            <div class="grid two">
+              <div class="field"><label>Name</label><input name="name" required maxlength="160" placeholder="e.g. 848 Naval Air Squadron"></div>
+              <div class="field"><label>Short name</label><input name="short_name" required maxlength="60" placeholder="e.g. 848 NAS"></div>
+            </div>
+            <div class="grid two">
+              <div class="field"><label>Type</label><select name="organisation_type" required>
+                <option value="unit">Unit</option>
+                <option value="department">Department</option>
+                <option value="group">Group</option>
+                <option value="network">Network</option>
+                <option value="force">Force</option>
+                <option value="other">Other</option>
+              </select></div>
+              <div class="field"><label>Display order</label><input name="display_order" type="number" step="1" value="50"></div>
+            </div>
+            <button class="btn navy" type="submit">Add organisation</button>
+          </form>
+        </div>
+
+        <div class="card rep-tool-card">
+          <h3 style="margin-top:0">Add team</h3>
+          <form id="kudos-platform-team-form">
+            <div class="field"><label>Organisation</label><select name="organisation_id" required><option value="">Choose organisation…</option>${unitOptions}</select></div>
+            <div class="grid two">
+              <div class="field"><label>Permanent team identity</label><input name="name" required maxlength="100" placeholder="e.g. Team 1"></div>
+              <div class="field"><label>Display name <span class="help">optional</span></label><input name="nickname" maxlength="100" placeholder="e.g. Buccaneer"></div>
+            </div>
+            <div class="field"><label>Display order</label><input name="display_order" type="number" step="1" value="1"></div>
+            <button class="btn navy" type="submit">Add team</button>
+          </form>
+        </div>
+      </div>
+      <div id="kudos-platform-status" class="rep-tool-status"></div>
+    `;
+  }
+
+  async function createPlatformOrganisation(platform, form) {
+    if (!platform?.workspace?.id) throw new Error('CHF Performance workspace was not found.');
+    const fd = new FormData(form);
+    const name = String(fd.get('name') || '').trim();
+    const shortName = String(fd.get('short_name') || '').trim();
+    const parentId = String(fd.get('parent_organisation_id') || '').trim();
+    const type = String(fd.get('organisation_type') || 'unit').trim();
+    const order = Number(fd.get('display_order') || 0);
+    if (!name || !shortName || !parentId) throw new Error('Complete the organisation name, short name and parent.');
+    const slug = platformSlug(shortName || name);
+    const { error } = await db.from('organisations').insert({
+      workspace_id: platform.workspace.id,
+      parent_organisation_id: parentId,
+      slug,
+      name,
+      short_name: shortName,
+      organisation_type: type,
+      display_order: Number.isFinite(order) ? order : 0,
+      active: true
+    });
+    if (error) throw error;
+  }
+
+  async function createPlatformTeam(platform, form) {
+    if (!platform?.workspace?.id) throw new Error('CHF Performance workspace was not found.');
+    const fd = new FormData(form);
+    const organisationId = String(fd.get('organisation_id') || '').trim();
+    const name = String(fd.get('name') || '').trim();
+    const nickname = String(fd.get('nickname') || '').trim();
+    const order = Number(fd.get('display_order') || 0);
+    if (!organisationId || !name) throw new Error('Choose an organisation and enter the permanent team identity.');
+    const { error } = await db.from('teams').insert({
+      workspace_id: platform.workspace.id,
+      organisation_id: organisationId,
+      name,
+      nickname,
+      display_order: Number.isFinite(order) ? order : 0,
+      active: true
+    });
+    if (error) throw error;
   }
 
   async function loadTeamData(teamId) {
@@ -1502,9 +1660,9 @@ if (!READY) {
       } else {
         const data = await loadTeamData(teamId);
         const isGlobalAdmin = mode === 'admin' && ctx.appUser?.role === 'admin';
-        const [adminData, contributionData, globalProfileData, moderationData] = isGlobalAdmin
-          ? await Promise.all([loadAccessAdminData(), loadGlobalContributionData(), loadGlobalProfileData(), loadGlobalModerationData()])
-          : [null, data, null, data];
+        const [adminData, contributionData, globalProfileData, moderationData, platformData] = isGlobalAdmin
+          ? await Promise.all([loadAccessAdminData(), loadGlobalContributionData(), loadGlobalProfileData(), loadGlobalModerationData(), loadPlatformAdminData()])
+          : [null, data, null, data, null];
         const selectedTeam = teams.find(t => t.id === teamId);
 
         root.innerHTML = `
@@ -1524,6 +1682,7 @@ if (!READY) {
                 </select>
               </div>` : ''}
           </div>
+          ${isGlobalAdmin ? renderPlatformOrganisationSection(platformData, teams) : ''}
           ${renderTeamNamesSection(teams, ctx, teamId, isGlobalAdmin)}
           ${renderChallengeSection(data, mode === 'admin')}
           ${renderEntrySection(moderationData, teams, isGlobalAdmin)}
@@ -1538,6 +1697,38 @@ if (!READY) {
           localStorage.setItem('kudos_rep_tools_team', e.target.value);
           document.getElementById('kudos-rep-tools')?.remove();
           schedule();
+        });
+
+        root.querySelector('#kudos-platform-org-form')?.addEventListener('submit', async e => {
+          e.preventDefault();
+          const status = root.querySelector('#kudos-platform-status');
+          const button = e.target.querySelector('button[type="submit"]');
+          try {
+            if (button) button.disabled = true;
+            if (status) status.innerHTML = '<div class="notice">Adding organisation…</div>';
+            await createPlatformOrganisation(platformData, e.target);
+            if (status) status.innerHTML = '<div class="notice success">Organisation added.</div>';
+            setTimeout(() => refreshToolsInPlace(), 250);
+          } catch (err) {
+            if (button) button.disabled = false;
+            if (status) status.innerHTML = `<div class="notice">${esc(err.message || err)}</div>`;
+          }
+        });
+
+        root.querySelector('#kudos-platform-team-form')?.addEventListener('submit', async e => {
+          e.preventDefault();
+          const status = root.querySelector('#kudos-platform-status');
+          const button = e.target.querySelector('button[type="submit"]');
+          try {
+            if (button) button.disabled = true;
+            if (status) status.innerHTML = '<div class="notice">Adding team…</div>';
+            await createPlatformTeam(platformData, e.target);
+            if (status) status.innerHTML = '<div class="notice success">Team added.</div>';
+            setTimeout(() => refreshToolsInPlace(), 250);
+          } catch (err) {
+            if (button) button.disabled = false;
+            if (status) status.innerHTML = `<div class="notice">${esc(err.message || err)}</div>`;
+          }
         });
 
         root.querySelectorAll('[data-save-team-nickname]').forEach(btn => {
