@@ -207,11 +207,11 @@ async function renderReminderCard(message = '') {
 }
 
 async function resyncExistingSubscription() {
-  if (localStorage.getItem('kudos_push_enabled') !== '1') return;
   try {
     const subscription = await currentSubscription();
     if (subscription && Notification.permission === 'granted') {
       await postSubscription('subscribe', subscription.toJSON());
+      localStorage.setItem('kudos_push_enabled', '1');
     }
   } catch (error) {
     console.warn('KUDOS reminder resync failed', error);
