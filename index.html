@@ -86,7 +86,7 @@
     const cfg = window.KUDOS_CONFIG || {};
 
     async function loadKudosApp() {
-      await import('./workspace-preview.js?v=nsn-preview-1');
+      await import('./workspace-preview.js?v=nsn-preview-2');
       const previewHandled = typeof window.KUDOS_WORKSPACE_PREVIEW === 'function'
         ? await window.KUDOS_WORKSPACE_PREVIEW()
         : false;
