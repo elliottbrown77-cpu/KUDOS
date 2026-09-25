@@ -308,7 +308,6 @@ if (!READY) {
           <div class="field"><label>Role</label><select name="role" id="kudos-platform-access-role" required>
             <option value="team_rep">Team Rep</option>
             <option value="organisation_admin">Organisation Admin</option>
-            <option value="report_viewer">Organisation Report Viewer</option>
             <option value="workspace_admin">Workspace Admin</option>
           </select></div>
           <div class="field"><label>Organisation</label><select name="organisation_id" id="kudos-platform-access-org">
@@ -1494,7 +1493,6 @@ if (!READY) {
           <div class="field"><label>Role</label><select name="role" id="kudos-invite-role">
             <option value="rep">Team Rep</option>
             <option value="organisation_admin">Organisation Admin</option>
-            <option value="report_viewer">Organisation Report Viewer</option>
             <option value="admin">Workspace Admin</option>
           </select></div>
           <div class="field"><label>Organisation</label><select name="organisation_id" id="kudos-invite-org">
