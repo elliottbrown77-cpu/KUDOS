@@ -34,23 +34,24 @@ function ukParts(now = new Date()) {
 
 export default async () => {
   const now = ukParts();
-  const monday = now.weekday === "Mon" && now.hour === 8;
-  const friday = now.weekday === "Fri" && now.hour === 12;
+  const monday = now.weekday === "Mon" && now.hour >= 8;
+  const friday = now.weekday === "Fri" && now.hour >= 12;
 
   if (!monday && !friday) {
     console.log("KUDOS reminder: outside UK reminder window", now);
     return;
   }
 
-  const publicKey = process.env.KUDOS_VAPID_PUBLIC_KEY;
-  const privateKey = process.env.KUDOS_VAPID_PRIVATE_KEY;
-  const subject = process.env.KUDOS_VAPID_SUBJECT || "https://chfkudos.netlify.app";
+  const publicKey = Netlify.env.get("KUDOS_VAPID_PUBLIC_KEY");
+  const privateKey = Netlify.env.get("KUDOS_VAPID_PRIVATE_KEY");
+  const subject = Netlify.env.get("KUDOS_VAPID_SUBJECT") || "https://chfkudos.netlify.app";
   if (!publicKey || !privateKey) throw new Error("KUDOS VAPID keys are not configured");
 
   webpush.setVapidDetails(subject, publicKey, privateKey);
 
   const runStore = getStore("kudos-push-runs", { consistency: "strong" });
-  const slot = `${now.year}-${now.month}-${now.day}-${now.hour}`;
+  const reminderType = monday ? "monday" : "friday";
+  const slot = `${now.year}-${now.month}-${now.day}-${reminderType}`;
   if (await runStore.get(slot)) {
     console.log("KUDOS reminder already sent for", slot);
     return;
@@ -58,6 +59,11 @@ export default async () => {
 
   const subscriptions = getStore("kudos-push-subscriptions", { consistency: "strong" });
   const { blobs } = await subscriptions.list({ prefix: "device/" });
+
+  if (!blobs.length) {
+    console.warn("KUDOS reminder: no site-wide push subscriptions visible; will retry next scheduled run", { slot });
+    return;
+  }
 
   const body = monday
     ? "Start the week with KUDOS — update your challenge progress."
@@ -97,14 +103,20 @@ export default async () => {
     void results;
   }
 
+  if (sent === 0 && failed > 0) {
+    console.warn("KUDOS reminder: all delivery attempts failed; leaving slot open for retry", { slot, sent, removed, failed });
+    return;
+  }
+
   await runStore.setJSON(slot, {
     completedAt: new Date().toISOString(),
+    reminderType,
     sent,
     removed,
     failed
   });
 
-  console.log("KUDOS reminder complete", { slot, sent, removed, failed });
+  console.log("KUDOS reminder complete", { slot, reminderType, sent, removed, failed });
 };
 
 export const config = { schedule: "0 * * * *" };
