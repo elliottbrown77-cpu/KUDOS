@@ -26,14 +26,14 @@ export default async () => {
   const runs = getStore("kudos-push-runs", { consistency: "strong" });
 
   const { blobs } = await subscriptions.list({ prefix: "device/" });
-  const slots = [8, 12].map(hour => ({
-    slot: `${now.year}-${now.month}-${now.day}-${hour}`,
-    hour
-  }));
+  const slots = [
+    { key: "monday", slot: `${now.year}-${now.month}-${now.day}-monday` },
+    { key: "friday", slot: `${now.year}-${now.month}-${now.day}-friday` }
+  ];
 
   const todayRuns: Record<string, unknown> = {};
   for (const x of slots) {
-    todayRuns[String(x.hour)] = await runs.get(x.slot, { type: "json" });
+    todayRuns[x.key] = await runs.get(x.slot, { type: "json" });
   }
 
   return Response.json({
