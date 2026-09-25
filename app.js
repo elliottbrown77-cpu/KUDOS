@@ -1042,7 +1042,28 @@ function bind(){
       if(button){button.disabled=false;button.textContent='Add to team progress';}
     }
   });
-  document.getElementById('specialForm')?.addEventListener('submit',async e=>{e.preventDefault();try{await submitSpecial(e.target.dataset.type,new FormData(e.target))}catch(err){state.notice=`Could not save: ${err.message||err}`;render()}});
+  document.getElementById('specialForm')?.addEventListener('submit',async e=>{
+    e.preventDefault();
+    const form=e.target;
+    const button=form.querySelector('button[type="submit"]');
+    if(form.dataset.submitting==='true') return;
+    form.dataset.submitting='true';
+    const originalText=button?.textContent||'Submit';
+    try{
+      if(button){button.disabled=true;button.textContent='Submitting…';}
+      await submitSpecial(form.dataset.type,new FormData(form));
+    }catch(err){
+      const msg=String(err?.message||err||'');
+      const isDuplicate=err?.code==='23505' || /duplicate|unique/i.test(msg);
+      state.notice=isDuplicate
+        ? 'This exact contribution has already been submitted. KUDOS has not added it again.'
+        : `Could not save: ${msg}`;
+      render();
+    }finally{
+      form.dataset.submitting='false';
+      if(button){button.disabled=false;button.textContent=originalText;}
+    }
+  });
   document.getElementById('challengeForm')?.addEventListener('submit',async e=>{e.preventDefault();try{await submitChallenge(new FormData(e.target))}catch(err){state.notice=`Could not save: ${err.message||err}`;render()}});
   document.getElementById('modal')?.addEventListener('click',e=>{if(e.target.id==='modal' && currentProfile())closeModal()});
 }
