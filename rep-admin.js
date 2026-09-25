@@ -614,7 +614,7 @@ if (!READY) {
   async function saveTeamNickname(teamId, nickname) {
     const ctx = await getContext();
     const role = ctx.appUser?.role;
-    if (!['admin','rep'].includes(role)) throw new Error('Rep or Administrator permission is required.');
+    if (!['admin','org_admin','rep'].includes(role)) throw new Error('Rep or Administrator permission is required.');
     if (role === 'rep' && ctx.appUser?.team_id !== teamId) throw new Error('Reps can only rename their own team.');
     const clean = String(nickname || '').trim();
     const { data, error } = await db
@@ -627,27 +627,27 @@ if (!READY) {
     return data[0];
   }
 
-  function renderChallengeSection(data, isFullAdmin=false) {
+  function renderChallengeSection(data, canEdit=false, canGlobal=false) {
     const rows = data.challenges.map(c => `
       <tr>
         <td><strong>${esc(c.title)}</strong><div class="help">${esc(c.source_type)} • ${esc(c.start_date)} to ${esc(c.end_date)}</div></td>
         <td>${fmt(c.target)} ${esc(c.unit)}</td>
         <td class="num">
           <div class="rep-tool-actions" style="justify-content:flex-end">
-            ${isFullAdmin ? `<button class="btn ghost compact" data-admin-edit-challenge="${esc(c.id)}">Edit</button>` : ''}
+            ${canEdit ? `<button class="btn ghost compact" data-admin-edit-challenge="${esc(c.id)}">Edit</button>` : ''}
             <button class="btn danger compact rep-tool-danger" data-rep-remove-challenge="${esc(c.id)}" data-title="${esc(c.title)}">Delete from this team</button>
-            ${isFullAdmin && c.challenge_group_id ? `<button class="btn danger compact rep-tool-danger" data-admin-remove-challenge-group="${esc(c.challenge_group_id)}" data-title="${esc(c.title)}">Delete from all teams</button>` : ''}
+            ${canGlobal && c.challenge_group_id ? `<button class="btn danger compact rep-tool-danger" data-admin-remove-challenge-group="${esc(c.challenge_group_id)}" data-title="${esc(c.title)}">Delete from all teams</button>` : ''}
           </div>
         </td>
       </tr>
-      ${isFullAdmin ? `<tr data-challenge-edit-row="${esc(c.id)}" style="display:none"><td colspan="3">${challengeEditForm(c)}</td></tr>` : ''}
+      ${canEdit ? `<tr data-challenge-edit-row="${esc(c.id)}" style="display:none"><td colspan="3">${challengeEditForm(c)}</td></tr>` : ''}
     `).join('');
 
     return `
       <div class="section-title"><h2>Challenge management</h2><p>Permanent deletion • term-based challenge reset</p></div>
       <div class="card rep-tool-card">
-        <div class="notice">${isFullAdmin
-          ? 'Admins can edit challenge details without losing existing entries. For shared challenges, you can apply an edit to the selected team only or to every team copy. Delete from this team permanently removes that team copy; Delete from all teams removes every copy in the shared challenge group.'
+        <div class="notice">${canEdit
+          ? (canGlobal ? 'Admins can edit challenge details without losing existing entries. For shared challenges, you can apply an edit to the selected team only or to every team copy. Delete from this team permanently removes that team copy; Delete from all teams removes every copy in the shared challenge group.' : 'Organisation Admins can edit challenge details for teams in their scope. Shared edits are limited by database permissions to the teams they administer.')
           : 'Deleting a challenge permanently removes it from your team. Challenge progress entries and PSF links are deleted with it and scores/reports are recalculated.'}</div>
         <div class="table-wrap" style="margin-top:12px">
           <table class="rep-tool-table">
@@ -912,7 +912,7 @@ if (!READY) {
     `;
   }
 
-  function renderProfileManagementSection(data, teams=[]) {
+  function renderProfileManagementSection(data, teams=[], global=false) {
     const scoreMap = Object.fromEntries(data.scores.map(s => [s.profile_id, s]));
     const teamMap = Object.fromEntries(teams.map(t => [t.id, t.name]));
     const sortedProfiles = [...data.profiles]
@@ -935,9 +935,9 @@ if (!READY) {
       }).join('');
 
     return `
-      <div class="section-title"><h2>Profile management</h2><p>Admin only • all active profiles across KUDOS</p></div>
+      <div class="section-title"><h2>Profile management</h2><p>${global ? 'Workspace Admin • all active profiles across KUDOS' : 'Organisation Admin • selected team profiles'}</p></div>
       <div class="card rep-tool-card admin-scroll-card">
-        <div class="notice">Showing all ${data.profiles.length} active profiles across every team. Deleting a profile permanently removes that person's challenge progress, innovation and Flight Safety submissions, submitted recognition and point adjustments. Recognition of that person is retained by name. Rep/Admin sign-in access is managed separately below.</div>
+        <div class="notice">Showing ${data.profiles.length} active profile${data.profiles.length===1?'':'s'} ${global ? 'across every team' : 'for the selected team'}. Deleting a profile permanently removes that person's challenge progress, innovation and Flight Safety submissions, submitted recognition and point adjustments. Recognition of that person is retained by name.</div>
         <div class="profile-search-row">
           <div class="field">
             <label for="kudos-admin-profile-search">Search profiles</label>
@@ -960,7 +960,7 @@ if (!READY) {
 
   async function deleteProfile(profileId, profileName) {
     const ctx = await getContext();
-    if (ctx.appUser?.role !== 'admin') throw new Error('Administrator permission is required.');
+    if (!['admin','org_admin'].includes(ctx.appUser?.role)) throw new Error('Administrator permission is required.');
 
     const [
       progressRes,
@@ -1342,7 +1342,7 @@ if (!READY) {
       throw new Error('Choose a person and adjustment type, enter a positive number of points and provide a reason.');
     }
 
-    if (action === 'add' && ctx.appUser?.role !== 'admin') {
+    if (action === 'add' && !['admin','org_admin'].includes(ctx.appUser?.role)) {
       throw new Error('Only Administrators can add KUDOS points.');
     }
 
@@ -1831,11 +1831,11 @@ if (!READY) {
           </div>
           ${isGlobalAdmin ? renderPlatformOrganisationSection(platformData, teams) : ''}
           ${renderTeamNamesSection(teams, ctx, teamId, isGlobalAdmin)}
-          ${renderChallengeSection(data, mode === 'admin')}
+          ${renderChallengeSection(data, mode === 'admin', isGlobalAdmin)}
           ${renderEntrySection(moderationData, teams, isGlobalAdmin)}
           ${renderContributionQueues(contributionData, teams, isGlobalAdmin)}
           ${renderPointsSection(data, mode === 'admin')}
-          ${mode === 'admin' ? renderProfileManagementSection(globalProfileData || data, teams) : ''}
+          ${mode === 'admin' ? renderProfileManagementSection(globalProfileData || data, teams, isGlobalAdmin) : ''}
           ${adminData ? renderAccessAdminSection(ctx, teams, adminData, platformData) : ''}
         `;
         main.appendChild(root);
