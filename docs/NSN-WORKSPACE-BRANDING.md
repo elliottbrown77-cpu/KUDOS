@@ -287,3 +287,20 @@ The target experience is:
 *powered by KUDOS*
 
 —not a recoloured copy of the 846 app.
+
+
+## Visual preview route
+
+A safe, read-only NSN preview is now implemented.
+
+Preview URL parameters:
+`?workspace=naval-servicewomens-network&preview=1`
+
+The preview:
+- reads the inactive NSN workspace branding, terminology and feature configuration from Supabase,
+- renders an isolated NSN UI using illustrative data,
+- does not load CHF profiles, teams, challenges or contributions,
+- disables submissions and management actions,
+- leaves the normal CHF deployment unchanged when the preview parameters are absent.
+
+This is the Phase A visual proof. The next platform step is to make live workspace-scoped profiles, activities, contributions and reports use the same configuration layer.
