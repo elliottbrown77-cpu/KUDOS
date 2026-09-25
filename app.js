@@ -128,12 +128,28 @@ async function loadAdminSession(){
   const {data:{session}} = await supabase.auth.getSession();
   state.authUser = session?.user || null;
   state.appUser = null;
+  state.workspaceAccess = [];
   if(state.authUser){
-    const {data,error} = await supabase.from('app_users').select('*').eq('auth_user_id',state.authUser.id).maybeSingle();
-    if(!error) state.appUser = data || null;
+    const [legacyRes, accessRes] = await Promise.all([
+      supabase.from('app_users').select('*').eq('auth_user_id',state.authUser.id).maybeSingle(),
+      supabase.from('workspace_access').select('*').eq('auth_user_id',state.authUser.id).eq('active',true)
+    ]);
+    if(!accessRes.error) state.workspaceAccess = accessRes.data || [];
+    if(!legacyRes.error && legacyRes.data){
+      state.appUser = legacyRes.data;
+    }else if(!accessRes.error){
+      const workspaceAdmin=state.workspaceAccess.find(a=>a.role==='workspace_admin');
+      const orgAdmin=state.workspaceAccess.find(a=>a.role==='organisation_admin');
+      const teamRep=state.workspaceAccess.find(a=>a.role==='team_rep');
+      const viewer=state.workspaceAccess.find(a=>a.role==='report_viewer');
+      if(workspaceAdmin) state.appUser={auth_user_id:state.authUser.id,role:'admin',team_id:null,platform_role:'workspace_admin',workspace_id:workspaceAdmin.workspace_id};
+      else if(orgAdmin) state.appUser={auth_user_id:state.authUser.id,role:'org_admin',team_id:null,platform_role:'organisation_admin',organisation_id:orgAdmin.organisation_id,workspace_id:orgAdmin.workspace_id};
+      else if(teamRep) state.appUser={auth_user_id:state.authUser.id,role:'rep',team_id:teamRep.team_id,platform_role:'team_rep',workspace_id:teamRep.workspace_id};
+      else if(viewer) state.appUser={auth_user_id:state.authUser.id,role:'viewer',team_id:null,platform_role:'report_viewer',organisation_id:viewer.organisation_id,workspace_id:viewer.workspace_id};
+    }
   }
 }
-function isAdmin(){ return ['rep','admin'].includes(state.appUser?.role); }
+function isAdmin(){ return ['rep','admin','org_admin'].includes(state.appUser?.role); }
 function isFullAdmin(){ return state.appUser?.role==='admin'; }
 function adminTeamId(){
   if(state.appUser?.role==='rep') return state.appUser.team_id;
@@ -726,7 +742,7 @@ async function submitAdminLogin(fd){
   if(error) throw error;
   await loadAdminSession();
   if(!state.appUser){
-    state.notice='Signed in, but this account has not yet been granted KUDOS admin access.';
+    state.notice='Signed in, but this account has not yet been granted KUDOS management access.';
   } else {
     state.notice=`Signed in as ${state.appUser.role}.`;
     if(state.appUser.team_id) state.teamFilter=state.appUser.team_id;
@@ -738,7 +754,7 @@ async function adminLogout(){
 }
 
 function challengeModal(){
-  const p=currentProfile(); const teamSelect=(state.mode==='supabase'&&state.appUser?.role==='admin')?`<div class="field"><label>Team</label><select name="team_id" required>${state.data.teams.map(t=>`<option value="${t.id}" ${t.id===adminTeamId()?'selected':''}>${esc(t.name)}</option>`).join('')}</select></div>`:''; return `<div class="modal-backdrop" id="modal"><div class="modal"><h2>Create a team challenge</h2><form id="challengeForm">${teamSelect}<div class="grid two"><div class="field"><label>Challenge name</label><input name="title" required placeholder="e.g. Move Together"></div><div class="field"><label>Measure</label><input name="unit" required placeholder="km, pauses, shares..."></div></div><div class="field"><label>Objective</label><textarea name="description" required placeholder="One sentence. If it cannot be explained in one sentence, simplify it."></textarea></div><div class="grid two"><div class="field"><label>Team target</label><input name="target" type="number" min="0" step="any" required></div><div class="field"><label>Source type</label><select name="source_type"><option value="progress">Normal progress</option><option value="recognition">Recognition count</option><option value="innovation">Innovation count</option><option value="safety">Flight Safety count</option></select></div></div><div class="grid two"><div class="field"><label>Start date</label><input name="start_date" type="date" value="${today()}" required></div><div class="field"><label>End date</label><input name="end_date" type="date" required></div></div><div class="field"><label>Performance Shaping Factors</label><div class="psf-grid">${PSFS.map(x=>`<label class="psf"><input type="checkbox" name="psfs" value="${esc(x)}">${esc(x)}</label>`).join('')}</div></div><button class="btn primary" type="submit">Create challenge</button></form></div></div>`;
+  const p=currentProfile(); const teamSelect=(state.mode==='supabase'&&['admin','org_admin'].includes(state.appUser?.role))?`<div class="field"><label>Team</label><select name="team_id" required>${state.data.teams.map(t=>`<option value="${t.id}" ${t.id===adminTeamId()?'selected':''}>${esc(t.name)}</option>`).join('')}</select></div>`:''; return `<div class="modal-backdrop" id="modal"><div class="modal"><h2>Create a team challenge</h2><form id="challengeForm">${teamSelect}<div class="grid two"><div class="field"><label>Challenge name</label><input name="title" required placeholder="e.g. Move Together"></div><div class="field"><label>Measure</label><input name="unit" required placeholder="km, pauses, shares..."></div></div><div class="field"><label>Objective</label><textarea name="description" required placeholder="One sentence. If it cannot be explained in one sentence, simplify it."></textarea></div><div class="grid two"><div class="field"><label>Team target</label><input name="target" type="number" min="0" step="any" required></div><div class="field"><label>Source type</label><select name="source_type"><option value="progress">Normal progress</option><option value="recognition">Recognition count</option><option value="innovation">Innovation count</option><option value="safety">Flight Safety count</option></select></div></div><div class="grid two"><div class="field"><label>Start date</label><input name="start_date" type="date" value="${today()}" required></div><div class="field"><label>End date</label><input name="end_date" type="date" required></div></div><div class="field"><label>Performance Shaping Factors</label><div class="psf-grid">${PSFS.map(x=>`<label class="psf"><input type="checkbox" name="psfs" value="${esc(x)}">${esc(x)}</label>`).join('')}</div></div><button class="btn primary" type="submit">Create challenge</button></form></div></div>`;
 }
 
 function page(){
@@ -949,7 +965,7 @@ async function submitSpecial(type,fd){
 }
 
 async function submitChallenge(fd){
-  const p=currentProfile(); const challengeTeam=(state.mode==='supabase'?(state.appUser?.role==='admin'?(fd.get('team_id')||adminTeamId()):state.appUser?.team_id):p.team_id); const rec={id:uid('CH'),code:uid('CH'),team_id:challengeTeam,title:fd.get('title'),description:fd.get('description'),target:Number(fd.get('target')),unit:fd.get('unit'),source_type:fd.get('source_type'),start_date:fd.get('start_date'),end_date:fd.get('end_date'),active:true,psfs:fd.getAll('psfs')};
+  const p=currentProfile(); const challengeTeam=(state.mode==='supabase'?(['admin','org_admin'].includes(state.appUser?.role)?(fd.get('team_id')||adminTeamId()):state.appUser?.team_id):p.team_id); const rec={id:uid('CH'),code:uid('CH'),team_id:challengeTeam,title:fd.get('title'),description:fd.get('description'),target:Number(fd.get('target')),unit:fd.get('unit'),source_type:fd.get('source_type'),start_date:fd.get('start_date'),end_date:fd.get('end_date'),active:true,psfs:fd.getAll('psfs')};
   if(state.mode==='demo'){state.data.challenges.push(rec);saveDemo();state.notice='Saved. The new challenge is active for your team.';closeModal();return;}
   const {data,error}=await supabase.from('challenges').insert({team_id:rec.team_id,title:rec.title,description:rec.description,target:rec.target,unit:rec.unit,source_type:rec.source_type,start_date:rec.start_date,end_date:rec.end_date,active:true}).select().single(); if(error)throw error;
   if(rec.psfs.length){const {data:psfRows,error:pe}=await supabase.from('psfs').select('id,name').in('name',rec.psfs);if(pe)throw pe;const {error:ce}=await supabase.from('challenge_psfs').insert(psfRows.map(x=>({challenge_id:data.id,psf_id:x.id})));if(ce)throw ce;}
