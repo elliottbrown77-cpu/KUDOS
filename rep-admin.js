@@ -32,18 +32,40 @@ if (!READY) {
   async function getContext() {
     const { data: { session } } = await db.auth.getSession();
     const user = session?.user || null;
-    if (!user) return { user: null, appUser: null };
+    if (!user) return { user: null, appUser: null, workspaceAccess: [], organisations: [], isWorkspaceAdmin: false };
 
-    const { data: appUser, error } = await db
-      .from('app_users')
-      .select('*')
-      .eq('auth_user_id', user.id)
-      .maybeSingle();
+    const [appUserRes, accessRes, orgRes] = await Promise.all([
+      db.from('app_users').select('*').eq('auth_user_id', user.id).maybeSingle(),
+      db.from('workspace_access').select('*').eq('auth_user_id', user.id).eq('active', true),
+      db.from('organisations').select('id,workspace_id,parent_organisation_id,name,short_name,organisation_type,active').eq('active', true)
+    ]);
+    const err = [appUserRes, accessRes, orgRes].find(r => r.error)?.error;
+    if (err) throw err;
 
-    if (error) throw error;
-    return { user, appUser: appUser || null };
+    const access = accessRes.data || [];
+    const legacy = appUserRes.data || null;
+    const workspaceAdmin = access.find(a => a.role === 'workspace_admin');
+    const orgAdmin = access.find(a => a.role === 'organisation_admin');
+    const scopedRep = access.find(a => a.role === 'team_rep');
+    const viewer = access.find(a => a.role === 'report_viewer');
+
+    let appUser = legacy;
+    if (!appUser) {
+      if (workspaceAdmin) appUser = { auth_user_id:user.id, role:'admin', team_id:null, platform_role:'workspace_admin', workspace_id:workspaceAdmin.workspace_id };
+      else if (orgAdmin) appUser = { auth_user_id:user.id, role:'org_admin', team_id:null, platform_role:'organisation_admin', organisation_id:orgAdmin.organisation_id, workspace_id:orgAdmin.workspace_id };
+      else if (scopedRep) appUser = { auth_user_id:user.id, role:'rep', team_id:scopedRep.team_id, platform_role:'team_rep', workspace_id:scopedRep.workspace_id };
+      else if (viewer) appUser = { auth_user_id:user.id, role:'viewer', team_id:null, platform_role:'report_viewer', organisation_id:viewer.organisation_id, workspace_id:viewer.workspace_id };
+    }
+
+    const isWorkspaceAdmin = legacy?.role === 'admin' || Boolean(workspaceAdmin);
+    return {
+      user,
+      appUser: appUser || null,
+      workspaceAccess: access,
+      organisations: orgRes.data || [],
+      isWorkspaceAdmin
+    };
   }
-
 
   async function getSelectedProfileContext() {
     const profileId = localStorage.getItem('kudos_profile') || '';
@@ -59,7 +81,7 @@ if (!READY) {
 
   function getActingMode(ctx) {
     const stored = localStorage.getItem('kudos_acting_mode') || '';
-    if (ctx.appUser?.role === 'admin') {
+    if (['admin','org_admin'].includes(ctx.appUser?.role)) {
       return ['individual','rep','admin'].includes(stored) ? stored : 'admin';
     }
     if (ctx.appUser?.role === 'rep') {
@@ -71,6 +93,28 @@ if (!READY) {
   function resolvedRepTeamId(ctx, profile, teams) {
     const candidate = ctx.appUser?.team_id || profile?.team_id || '';
     return teams.some(t => t.id === candidate) ? candidate : '';
+  }
+
+  function organisationWithinScope(organisationId, scopeId, organisations) {
+    let current = organisations.find(o => o.id === organisationId);
+    const seen = new Set();
+    while (current && !seen.has(current.id)) {
+      if (current.id === scopeId) return true;
+      seen.add(current.id);
+      current = organisations.find(o => o.id === current.parent_organisation_id);
+    }
+    return false;
+  }
+
+  function managementTeamsForContext(ctx, teams) {
+    if (ctx.isWorkspaceAdmin) return teams;
+    const orgScopes = (ctx.workspaceAccess || []).filter(a => a.active !== false && a.role === 'organisation_admin').map(a => a.organisation_id);
+    const teamScopes = new Set((ctx.workspaceAccess || []).filter(a => a.active !== false && a.role === 'team_rep').map(a => a.team_id));
+    if (ctx.appUser?.role === 'rep' && ctx.appUser.team_id) teamScopes.add(ctx.appUser.team_id);
+    return teams.filter(t =>
+      teamScopes.has(t.id) ||
+      orgScopes.some(orgId => organisationWithinScope(t.organisation_id, orgId, ctx.organisations || []))
+    );
   }
 
   function hideCoreRepPage(main) {
@@ -92,8 +136,8 @@ if (!READY) {
     const buttons = [
       `<button class="btn ${mode==='individual'?'primary':'ghost'} acting-mode-btn" data-kudos-acting-mode="individual">Individual</button>`,
       `<button class="btn ${mode==='rep'?'primary':'ghost'} acting-mode-btn" data-kudos-acting-mode="rep" ${repTeamId?'':'disabled'}>Rep</button>`,
-      ctx.appUser?.role === 'admin'
-        ? `<button class="btn ${mode==='admin'?'primary':'ghost'} acting-mode-btn" data-kudos-acting-mode="admin">Admin</button>`
+      ['admin','org_admin'].includes(ctx.appUser?.role)
+        ? `<button class="btn ${mode==='admin'?'primary':'ghost'} acting-mode-btn" data-kudos-acting-mode="admin">${ctx.appUser?.role==='org_admin'?'Organisation Admin':'Admin'}</button>`
         : ''
     ].join('');
 
@@ -254,8 +298,86 @@ if (!READY) {
           </form>
         </div>
       </div>
+      <div class="section-title" style="margin-top:22px"><h2>Scoped platform access</h2><p>Assign management or reporting scope without giving global access</p></div>
+      <div class="card rep-tool-card">
+        <form id="kudos-platform-access-form" class="admin-invite-form">
+          <div class="field"><label>Account</label><select name="auth_user_id" required>
+            <option value="">Choose account…</option>
+            ${platform.directory.map(d=>`<option value="${esc(d.auth_user_id)}">${esc(d.email)}</option>`).join('')}
+          </select></div>
+          <div class="field"><label>Role</label><select name="role" id="kudos-platform-access-role" required>
+            <option value="team_rep">Team Rep</option>
+            <option value="organisation_admin">Organisation Admin</option>
+            <option value="report_viewer">Organisation Report Viewer</option>
+            <option value="workspace_admin">Workspace Admin</option>
+          </select></div>
+          <div class="field"><label>Organisation</label><select name="organisation_id" id="kudos-platform-access-org">
+            <option value="">Choose organisation…</option>${parentOptions}
+          </select></div>
+          <div class="field"><label>Team</label><select name="team_id" id="kudos-platform-access-team">
+            <option value="">Choose team…</option>
+            ${teams.map(t=>`<option value="${esc(t.id)}">${esc(t.name)}</option>`).join('')}
+          </select></div>
+          <button class="btn navy" type="submit">Add scope</button>
+        </form>
+        <div class="help" style="margin-top:10px">Workspace Admin = all CHF Performance data. Organisation Admin = selected organisation and all child units. Team Rep = selected team only. Report Viewer = read-only reporting scope.</div>
+      </div>
+
+      <div class="card rep-tool-card admin-scroll-card">
+        <div class="table-wrap">
+          <table class="rep-tool-table">
+            <thead><tr><th>Account</th><th>Role</th><th>Scope</th><th></th></tr></thead>
+            <tbody>${platform.access.map(a=>{
+              const email=platform.directory.find(d=>d.auth_user_id===a.auth_user_id)?.email || a.auth_user_id;
+              const scope=a.team_id
+                ? (teams.find(t=>t.id===a.team_id)?.name || 'Team')
+                : a.organisation_id
+                  ? (orgMap[a.organisation_id]?.short_name || orgMap[a.organisation_id]?.name || 'Organisation')
+                  : platform.workspace.name;
+              return `<tr>
+                <td><strong>${esc(email)}</strong></td>
+                <td>${esc(a.role.replaceAll('_',' '))}</td>
+                <td>${esc(scope)}</td>
+                <td class="num"><button class="btn danger compact rep-tool-danger" data-remove-platform-access="${esc(a.id)}">Remove</button></td>
+              </tr>`;
+            }).join('') || '<tr><td colspan="4"><div class="empty compact-empty">No scoped access records.</div></td></tr>'}</tbody>
+          </table>
+        </div>
+      </div>
       <div id="kudos-platform-status" class="rep-tool-status"></div>
     `;
+  }
+
+  async function savePlatformAccess(platform, form) {
+    if (!platform?.workspace?.id) throw new Error('CHF Performance workspace was not found.');
+    const fd = new FormData(form);
+    const authUserId = String(fd.get('auth_user_id') || '').trim();
+    const role = String(fd.get('role') || '').trim();
+    const organisationId = String(fd.get('organisation_id') || '').trim() || null;
+    const teamId = String(fd.get('team_id') || '').trim() || null;
+    if (!authUserId) throw new Error('Choose an account.');
+    if (!['workspace_admin','organisation_admin','team_rep','report_viewer'].includes(role)) throw new Error('Choose a valid platform role.');
+    if (role === 'team_rep' && !teamId) throw new Error('Choose a team for a Team Rep.');
+    if (['organisation_admin','report_viewer'].includes(role) && !organisationId) throw new Error('Choose an organisation for this role.');
+    const record = {
+      auth_user_id: authUserId,
+      workspace_id: platform.workspace.id,
+      role,
+      organisation_id: ['organisation_admin','report_viewer'].includes(role) ? organisationId : null,
+      team_id: role === 'team_rep' ? teamId : null,
+      active: true,
+      updated_at: new Date().toISOString()
+    };
+    const { error } = await db.from('workspace_access').insert(record);
+    if (error) {
+      if (error.code === '23505') throw new Error('That account already has this access scope.');
+      throw error;
+    }
+  }
+
+  async function removePlatformAccess(id) {
+    const { error } = await db.from('workspace_access').delete().eq('id', id);
+    if (error) throw error;
   }
 
   async function createPlatformOrganisation(platform, form) {
@@ -1659,7 +1781,7 @@ if (!READY) {
         main.appendChild(root);
       } else {
         const data = await loadTeamData(teamId);
-        const isGlobalAdmin = mode === 'admin' && ctx.appUser?.role === 'admin';
+        const isGlobalAdmin = mode === 'admin' && ctx.isWorkspaceAdmin;
         const [adminData, contributionData, globalProfileData, moderationData, platformData] = isGlobalAdmin
           ? await Promise.all([loadAccessAdminData(), loadGlobalContributionData(), loadGlobalProfileData(), loadGlobalModerationData(), loadPlatformAdminData()])
           : [null, data, null, data, null];
@@ -1669,9 +1791,9 @@ if (!READY) {
           ${actingModeBar(ctx, profile, teams, mode, repTeamId)}
           <div class="section-title rep-tools-head">
             <div>
-              <h2>${mode === 'admin' ? 'Administrator controls' : 'Performance Rep controls'}</h2>
+              <h2>${mode === 'admin' ? (isGlobalAdmin ? 'Administrator controls' : 'Organisation Admin controls') : 'Performance Rep controls'}</h2>
               <p>${mode === 'admin'
-                ? `<span class="admin-global-badge">GLOBAL ADMIN</span> • selected management view: ${esc(selectedTeam?.name || 'Team')}`
+                ? `${isGlobalAdmin ? '<span class="admin-global-badge">WORKSPACE ADMIN</span>' : '<span class="admin-global-badge">SCOPED ADMIN</span>'} • selected management view: ${esc(selectedTeam?.name || 'Team')}`
                 : `${esc(selectedTeam?.name || 'Team')} • team-scoped`}</p>
             </div>
             ${mode === 'admin' ? `
@@ -1697,6 +1819,49 @@ if (!READY) {
           localStorage.setItem('kudos_rep_tools_team', e.target.value);
           document.getElementById('kudos-rep-tools')?.remove();
           schedule();
+        });
+
+        const platformAccessRole = root.querySelector('#kudos-platform-access-role');
+        const platformAccessOrg = root.querySelector('#kudos-platform-access-org');
+        const platformAccessTeam = root.querySelector('#kudos-platform-access-team');
+        const syncPlatformAccessFields = () => {
+          const role = platformAccessRole?.value || '';
+          if (platformAccessOrg) platformAccessOrg.disabled = !['organisation_admin','report_viewer'].includes(role);
+          if (platformAccessTeam) platformAccessTeam.disabled = role !== 'team_rep';
+        };
+        platformAccessRole?.addEventListener('change', syncPlatformAccessFields);
+        syncPlatformAccessFields();
+
+        root.querySelector('#kudos-platform-access-form')?.addEventListener('submit', async e => {
+          e.preventDefault();
+          const status = root.querySelector('#kudos-platform-status');
+          const button = e.target.querySelector('button[type="submit"]');
+          try {
+            if (button) button.disabled = true;
+            if (status) status.innerHTML = '<div class="notice">Adding access scope…</div>';
+            await savePlatformAccess(platformData, e.target);
+            if (status) status.innerHTML = '<div class="notice success">Access scope added.</div>';
+            setTimeout(() => refreshToolsInPlace(), 250);
+          } catch (err) {
+            if (button) button.disabled = false;
+            if (status) status.innerHTML = `<div class="notice">${esc(err.message || err)}</div>`;
+          }
+        });
+
+        root.querySelectorAll('[data-remove-platform-access]').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            if (!window.confirm('Remove this platform access scope?')) return;
+            const status = root.querySelector('#kudos-platform-status');
+            try {
+              btn.disabled = true;
+              await removePlatformAccess(btn.dataset.removePlatformAccess);
+              if (status) status.innerHTML = '<div class="notice success">Access scope removed.</div>';
+              setTimeout(() => refreshToolsInPlace(), 250);
+            } catch (err) {
+              btn.disabled = false;
+              if (status) status.innerHTML = `<div class="notice">${esc(err.message || err)}</div>`;
+            }
+          });
         });
 
         root.querySelector('#kudos-platform-org-form')?.addEventListener('submit', async e => {
@@ -1961,9 +2126,10 @@ if (!READY) {
         renderPasswordSignin(main);
         return;
       }
-      if (!ctx.appUser || !['rep', 'admin'].includes(ctx.appUser.role)) return;
+      if (!ctx.appUser || !['rep', 'admin', 'org_admin'].includes(ctx.appUser.role)) return;
 
-      const [teams, profile] = await Promise.all([getTeams(), getSelectedProfileContext()]);
+      const [allTeams, profile] = await Promise.all([getTeams(), getSelectedProfileContext()]);
+      const teams = managementTeamsForContext(ctx, allTeams);
       const mode = getActingMode(ctx);
       const repTeamId = resolvedRepTeamId(ctx, profile, teams);
 
