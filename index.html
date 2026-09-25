@@ -86,6 +86,12 @@
     const cfg = window.KUDOS_CONFIG || {};
 
     async function loadKudosApp() {
+      await import('./workspace-preview.js?v=nsn-preview-1');
+      const previewHandled = typeof window.KUDOS_WORKSPACE_PREVIEW === 'function'
+        ? await window.KUDOS_WORKSPACE_PREVIEW()
+        : false;
+      if (previewHandled) return;
+
       await import('./app.js?v=scoped-access-1');
       await import('./profile-team-first.js?v=team-first-1');
       await import('./home-challenges.js?v=home-all-1');
