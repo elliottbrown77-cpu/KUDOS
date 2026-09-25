@@ -67,3 +67,34 @@ Add authorised roll-up dashboards at Squadron, CHF and FAA levels while preservi
 ## Compatibility rule
 
 Until workspace-aware RLS and UI routing are complete, the live application continues to behave as the current 846 KUDOS deployment. New platform tables are additive and must not alter current scoring or contribution behaviour.
+
+
+## Stage 2 now implemented
+
+The platform now has a scoped access model in `workspace_access`.
+
+Roles:
+- `workspace_admin` — full administration of a workspace.
+- `organisation_admin` — administration of the selected organisation and descendant units/teams.
+- `team_rep` — administration of one team.
+- `report_viewer` — reserved for future read-only hierarchical reporting.
+
+The existing 846 Admin and Rep accounts have been mirrored into this model so current access continues to work while the platform transitions away from the original single-role `app_users` design.
+
+The production hierarchy now also includes:
+- 845 NAS
+- 847 NAS
+- CHF HQ
+
+No teams have been created inside those organisations yet.
+
+The Admin UI can now:
+- view the organisation hierarchy,
+- add organisations,
+- add teams beneath an organisation,
+- assign scoped platform access to existing accounts,
+- create new Team Rep, Organisation Admin or Workspace Admin accounts.
+
+Organisation Admins can manage teams within their hierarchy without becoming global Workspace Admins. Database RLS enforces the scope.
+
+Read-only report-viewer access remains intentionally unexposed in the UI until reports themselves are filtered by workspace/organisation scope.
