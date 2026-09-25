@@ -1,4 +1,4 @@
-import { getStore, getDeployStore } from "@netlify/blobs";
+import { getStore } from "@netlify/blobs";
 
 type PushSubscriptionJSON = {
   endpoint: string;
@@ -7,9 +7,9 @@ type PushSubscriptionJSON = {
 };
 
 function store() {
-  return process.env.CONTEXT === "production"
-    ? getStore("kudos-push-subscriptions", { consistency: "strong" })
-    : getDeployStore("kudos-push-subscriptions");
+  // Push subscriptions must be site-wide so the published scheduled
+  // function can see the same devices across deploys.
+  return getStore("kudos-push-subscriptions", { consistency: "strong" });
 }
 
 function validDeviceId(value: unknown): value is string {
