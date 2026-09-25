@@ -1418,7 +1418,7 @@ if (!READY) {
     </select>`;
   }
 
-  function renderAccessAdminSection(ctx, teams, data) {
+  function renderAccessAdminSection(ctx, teams, data, platformData=null) {
     if (ctx.appUser?.role !== 'admin') return '';
 
     const accessMap = Object.fromEntries(data.access.map(a => [a.auth_user_id, a]));
@@ -1426,6 +1426,9 @@ if (!READY) {
     const admins = data.access.filter(a => a.role === 'admin').length;
     const reps = data.access.filter(a => a.role === 'rep').length;
     const unassigned = data.directory.filter(d => !accessMap[d.auth_user_id]).length;
+    const platformOrgOptions = (platformData?.organisations || [])
+      .map(o => `<option value="${esc(o.id)}">${esc(o.short_name || o.name)}</option>`)
+      .join('');
 
     const directoryRows = data.directory.map(d => {
       const a = accessMap[d.auth_user_id];
@@ -1488,8 +1491,16 @@ if (!READY) {
         <form id="kudos-access-invite-form" class="admin-invite-form" style="margin-top:14px">
           <div class="field"><label>Email</label><input name="email" type="email" required autocomplete="email" placeholder="name@example.com"></div>
           <div class="field"><label>Temporary password</label><input name="password" type="password" minlength="10" required autocomplete="new-password" placeholder="At least 10 characters"></div>
-          <div class="field"><label>Role</label><select name="role" id="kudos-invite-role"><option value="rep">Rep</option><option value="admin">Admin</option></select></div>
-          <div class="field"><label>Rep team <span class="help">(optional for Admin)</span></label>${teamSelectHtml(teams,'',false,'name="team_id" id="kudos-invite-team"')}</div>
+          <div class="field"><label>Role</label><select name="role" id="kudos-invite-role">
+            <option value="rep">Team Rep</option>
+            <option value="organisation_admin">Organisation Admin</option>
+            <option value="report_viewer">Organisation Report Viewer</option>
+            <option value="admin">Workspace Admin</option>
+          </select></div>
+          <div class="field"><label>Organisation</label><select name="organisation_id" id="kudos-invite-org">
+            <option value="">Choose organisation…</option>${platformOrgOptions}
+          </select></div>
+          <div class="field"><label>Team</label>${teamSelectHtml(teams,'',false,'name="team_id" id="kudos-invite-team"')}</div>
           <button class="btn navy" type="submit">Create account</button>
         </form>
         <div id="kudos-access-status" class="rep-tool-status"></div>
@@ -1551,13 +1562,17 @@ if (!READY) {
     return true;
   }
 
-  async function createAccessAccount(email, password, role, teamId) {
+  async function createAccessAccount(email, password, role, teamId, organisationId) {
     email = String(email || '').trim().toLowerCase();
     password = String(password || '');
+    role = String(role || '').trim();
+    teamId = String(teamId || '').trim();
+    organisationId = String(organisationId || '').trim();
     if (!email) throw new Error('Enter an email address.');
     if (password.length < 10) throw new Error('Temporary password must be at least 10 characters.');
-    if (!['rep','admin'].includes(role)) throw new Error('Choose Rep or Admin.');
-    if (role === 'rep' && !teamId) throw new Error('Choose a team for the Rep.');
+    if (!['rep','admin','organisation_admin','report_viewer'].includes(role)) throw new Error('Choose a valid access role.');
+    if (role === 'rep' && !teamId) throw new Error('Choose a team for the Team Rep.');
+    if (['organisation_admin','report_viewer'].includes(role) && !organisationId) throw new Error('Choose an organisation for this role.');
 
     const {data, error} = await db.functions.invoke('manage-kudos-account', {
       body: {
@@ -1565,7 +1580,8 @@ if (!READY) {
         email,
         password,
         role,
-        team_id: teamId || null
+        team_id: role === 'rep' ? teamId : null,
+        organisation_id: ['organisation_admin','report_viewer'].includes(role) ? organisationId : null
       }
     });
 
@@ -1585,17 +1601,25 @@ if (!READY) {
   }
 
 
-  function bindAccessAdmin(ctx, teams, adminData, root) {
+  function bindAccessAdmin(ctx, teams, adminData, root, platformData=null) {
     if (ctx.appUser?.role !== 'admin') return;
 
     const inviteRole = document.getElementById('kudos-invite-role');
     const inviteTeam = document.getElementById('kudos-invite-team');
-    const syncInviteTeam = () => {
-      if (!inviteRole || !inviteTeam) return;
-      inviteTeam.disabled = false;
+    const inviteOrg = document.getElementById('kudos-invite-org');
+    const syncInviteScope = () => {
+      const role = inviteRole?.value || '';
+      if (inviteTeam) {
+        inviteTeam.disabled = role !== 'rep';
+        if (role !== 'rep') inviteTeam.value = '';
+      }
+      if (inviteOrg) {
+        inviteOrg.disabled = !['organisation_admin','report_viewer'].includes(role);
+        if (!['organisation_admin','report_viewer'].includes(role)) inviteOrg.value = '';
+      }
     };
-    inviteRole?.addEventListener('change', syncInviteTeam);
-    syncInviteTeam();
+    inviteRole?.addEventListener('change', syncInviteScope);
+    syncInviteScope();
 
     root.querySelectorAll('[data-access-role]').forEach(sel => {
       const userId = sel.dataset.accessRole;
@@ -1621,7 +1645,8 @@ if (!READY) {
           fd.get('email'),
           fd.get('password'),
           String(fd.get('role') || ''),
-          String(fd.get('team_id') || '')
+          String(fd.get('team_id') || ''),
+          String(fd.get('organisation_id') || '')
         );
         setAccessStatus(message);
         setTimeout(() => refreshToolsInPlace(), 350);
@@ -1811,7 +1836,7 @@ if (!READY) {
           ${renderContributionQueues(contributionData, teams, isGlobalAdmin)}
           ${renderPointsSection(data, mode === 'admin')}
           ${mode === 'admin' ? renderProfileManagementSection(globalProfileData || data, teams) : ''}
-          ${adminData ? renderAccessAdminSection(ctx, teams, adminData) : ''}
+          ${adminData ? renderAccessAdminSection(ctx, teams, adminData, platformData) : ''}
         `;
         main.appendChild(root);
 
@@ -2089,7 +2114,7 @@ if (!READY) {
           }
         });
 
-        if (adminData) bindAccessAdmin(ctx, teams, adminData, root);
+        if (adminData) bindAccessAdmin(ctx, teams, adminData, root, platformData);
       }
     }
 
