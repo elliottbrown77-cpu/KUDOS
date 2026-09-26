@@ -152,3 +152,42 @@ main{max-width:1120px;margin:0 auto;padding:18px 16px 40px}
     font-size:16px;
   }
 }
+
+
+/* KUDOS rank tags + achievement badges */
+.metric-rank{margin-top:7px}
+.kudos-rank-tag{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:6px 10px;font-size:11px;font-weight:900;letter-spacing:.025em;border:1px solid transparent;white-space:nowrap}
+.kudos-rank-tag.compact{padding:4px 8px;font-size:10px}
+.kudos-rank-tag.rank-elite{background:#F4E8C6;color:#5E4700;border-color:#D8C18C}
+.kudos-rank-tag.rank-leader{background:#E7EEF6;color:#0C2338;border-color:#B8C8D8}
+.kudos-rank-tag.rank-contributor{background:#E7EEE8;color:#244A2B;border-color:#BED0C1}
+.kudos-rank-tag.rank-starter{background:#F0F2F3;color:#5A6872;border-color:#D8DEE2}
+
+.kudos-status-card{margin-top:16px;padding:20px}
+.kudos-status-head{display:flex;align-items:flex-start;justify-content:space-between;gap:18px}
+.kudos-status-head h3{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:6px 0 0}
+.rank-position{font-size:13px;font-weight:700;color:var(--muted,#67747d)}
+.status-score{text-align:right;min-width:90px}
+.status-score b{display:block;font-size:30px;line-height:1;color:var(--navy,#0C2338)}
+.status-score span{display:block;margin-top:5px;font-size:10px;letter-spacing:.08em;font-weight:900;color:var(--muted,#67747d)}
+.badge-section-head{display:flex;align-items:center;justify-content:space-between;margin:18px 0 10px;padding-top:14px;border-top:1px solid var(--line,#dde2df)}
+.badge-section-head span{display:grid;place-items:center;min-width:26px;height:26px;border-radius:999px;background:var(--soft,#E7EEE8);font-size:11px;font-weight:900}
+.achievement-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.achievement-badge{display:flex;align-items:flex-start;gap:10px;padding:11px;border:1px solid var(--line,#dde2df);border-radius:13px;background:#fff}
+.achievement-badge.weekly-badge{background:#F0F5FA;border-color:#C7D6E4}
+.badge-icon{display:grid;place-items:center;flex:0 0 32px;width:32px;height:32px;border-radius:10px;background:var(--navy,#0C2338);color:#fff;font-weight:900}
+.weekly-badge .badge-icon{background:#315A7D}
+.achievement-badge strong{display:block;font-size:12px;line-height:1.2;color:var(--navy,#0C2338)}
+.achievement-badge small{display:block;margin-top:4px;font-size:10px;line-height:1.35;color:var(--muted,#67747d)}
+.next-badge{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-top:12px;padding:12px 14px;border-radius:13px;background:var(--soft,#E7EEE8)}
+.next-badge div>span{display:block;font-size:9px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;color:var(--muted,#67747d)}
+.next-badge div>strong{display:block;margin-top:2px;font-size:13px}
+.next-badge div>small{display:block;margin-top:3px;color:var(--muted,#67747d)}
+.next-badge>b{white-space:nowrap;font-size:13px}
+@media(max-width:900px){.achievement-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:560px){
+  .kudos-status-head{align-items:center}
+  .status-score b{font-size:26px}
+  .achievement-grid{grid-template-columns:1fr}
+  .next-badge{align-items:flex-start;flex-direction:column}
+}
