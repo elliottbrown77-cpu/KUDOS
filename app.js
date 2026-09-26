@@ -404,6 +404,10 @@ function weeklyBadges(profileId){
   const previousActive=profileWeeklyRows(profileId).filter(x=>x.week_start<current).at(-1);
   const gapWeeks=previousActive?Math.round((new Date(`${current}T12:00:00`)-new Date(`${previousActive.week_start}T12:00:00`))/(7*86400000)):0;
   const out=[{title:'Showing Up',icon:'✓',description:'Contributed to KUDOS this week.',kind:'weekly'}];
+  const psfCount=individualPsfEngagement(profileId).count;
+  if(psfCount>=9) out.push({title:'PSF Explorer · Gold',icon:'9',description:'Tackled all 9 Performance Shaping Factors this week.',kind:'weekly'});
+  else if(psfCount>=6) out.push({title:'PSF Explorer · Silver',icon:'6',description:'Tackled at least 6 Performance Shaping Factors this week.',kind:'weekly'});
+  else if(psfCount>=3) out.push({title:'PSF Explorer · Bronze',icon:'3',description:'Tackled at least 3 Performance Shaping Factors this week.',kind:'weekly'});
   if(maxTeam>0&&Number(row.kudos_gained||0)===maxTeam) out.push({title:'Team MVP This Week',icon:'◆',description:'Highest KUDOS gain in your team this week.',kind:'weekly'});
   if(maxGlobal>0&&Number(row.kudos_gained||0)===maxGlobal) out.push({title:'Top Contributor This Week',icon:'★',description:'Highest KUDOS gain across all teams this week.',kind:'weekly'});
   if(previous&&delta>0) out.push({title:'Momentum',icon:'↗',description:'Improved your KUDOS gain compared with last week.',kind:'weekly'});
@@ -433,7 +437,11 @@ function earnedBadges(profileId){
 function nextBadgeGoal(profileId){
   const a=achievementSummary(profileId);
   const streak=longestWeeklyStreak(profileId);
+  const psfCount=individualPsfEngagement(profileId).count;
   if(Number(a.total_actions||0)<1) return {title:'First Step',progress:'0 / 1',text:'Make your first KUDOS contribution.'};
+  if(psfCount<3) return {title:'PSF Explorer · Bronze',progress:`${psfCount} / 3 PSFs`,text:'Tackle 3 different Performance Shaping Factors this week.'};
+  if(psfCount<6) return {title:'PSF Explorer · Silver',progress:`${psfCount} / 6 PSFs`,text:'Broaden your activity to 6 PSFs this week.'};
+  if(psfCount<9) return {title:'PSF Explorer · Gold',progress:`${psfCount} / 9 PSFs`,text:'Tackle all 9 Performance Shaping Factors this week.'};
   if(Number(a.total_actions||0)<3) return {title:'Getting Going',progress:`${a.total_actions} / 3`,text:'Reach 3 total contributions.'};
   if(streak<2) return {title:'Consistency · Bronze',progress:`${streak} / 2 weeks`,text:'Contribute in 2 consecutive weeks.'};
   if(Number(a.distinct_challenges||0)<3) return {title:'Team Player',progress:`${a.distinct_challenges} / 3`,text:'Contribute to 3 different challenges.'};
