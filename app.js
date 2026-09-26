@@ -263,6 +263,49 @@ function psfCoverage(teamId){
   return {count:covered.size,covered};
 }
 
+function individualPsfEngagement(profileId){
+  const challengeIds=new Set(
+    (state.data?.profileTotals||[])
+      .filter(x=>x.profile_id===profileId && Number(x.contribution||0)>0)
+      .map(x=>x.challenge_id)
+  );
+  const factors=PSFS.map(name=>{
+    const challenges=(state.data?.challenges||[])
+      .filter(c=>c.active!==false && challengeIds.has(c.id) && (c.psfs||[]).includes(name));
+    return {
+      name,
+      engaged:challenges.length>0,
+      challengeCount:challenges.length,
+      challenges:challenges.map(c=>c.title)
+    };
+  });
+  const engaged=factors.filter(x=>x.engaged);
+  return {count:engaged.length,factors,engaged};
+}
+function psfEngagementCard(profileId,teamId){
+  if(!profileId) return '';
+  const personal=individualPsfEngagement(profileId);
+  const portfolio=psfCoverage(teamId);
+  const chips=personal.factors.map(f=>`
+    <div class="psf-engagement-item ${f.engaged?'engaged':'not-engaged'}" title="${f.engaged?esc(f.challenges.join(', ')):'No contribution yet to a linked challenge'}">
+      <span class="psf-state">${f.engaged?'✓':'○'}</span>
+      <span><strong>${esc(f.name)}</strong><small>${f.engaged?`${f.challengeCount} linked challenge${f.challengeCount===1?'':'s'} tackled`:'Not yet tackled'}</small></span>
+    </div>`
+  ).join('');
+  return `<div class="card psf-engagement-card">
+    <div class="psf-engagement-head">
+      <div>
+        <div class="eyebrow">MY PERFORMANCE SHAPING FACTORS</div>
+        <h3>${personal.count}/9 PSFs actively tackled</h3>
+        <p class="help">A PSF counts as tackled when you contribute to a challenge linked to that factor.</p>
+      </div>
+      <div class="psf-coverage-dial"><b>${personal.count}</b><span>of 9</span></div>
+    </div>
+    <div class="psf-engagement-grid">${chips}</div>
+    <div class="psf-portfolio-note">Your team's current challenge portfolio covers <strong>${portfolio.count}/9 PSFs</strong>. The grey factors above are opportunities for you to broaden your own performance habits.</div>
+  </div>`;
+}
+
 function ordinal(n){
   n=Number(n||0);
   const mod100=n%100;
@@ -485,7 +528,8 @@ function homeView(){
   <div class="grid four"><div class="card metric"><div class="label">My KUDOS score</div><div class="value">${fmt(profileScore(p?.id))}</div><div class="metric-rank">${kudosRankTag(p?.id,true)}</div><div class="sub">Challenge score from % of target + 20 KUDOS contributions</div></div>
   <div class="card metric"><div class="label">Team KUDOS score</div><div class="value">${fmt(teamScore(team))}</div><div class="sub">Combined individual contribution</div></div>
   <div class="card metric"><div class="label">Challenge completion</div><div class="value">${pct(avg)}</div><div class="sub">Average capped at 100% per challenge</div></div>
-  <div class="card metric"><div class="label">PSF coverage</div><div class="value">${cov.count}/9</div><div class="sub">Across the current challenge portfolio</div></div></div>
+  <div class="card metric"><div class="label">My PSF engagement</div><div class="value">${individualPsfEngagement(p?.id).count}/9</div><div class="sub">Performance Shaping Factors you are actively tackling</div></div></div>
+  ${psfEngagementCard(p?.id,team)}
   ${kudosStatusCard(p?.id)}
   <div class="section-title contribution-title"><h2>Make a contribution</h2><p>Safety • Recognition • Innovation</p></div>
   <div class="card scoring-explainer"><strong>How KUDOS scoring works</strong><div class="help">Challenge progress still tracks the real measure, such as kg or km. Your KUDOS score comes from the share of the team target you contribute: <strong>1% of target = 10 KUDOS</strong>, up to a maximum of <strong>100 KUDOS per person per challenge</strong>. Each <strong>Recognition</strong>, <strong>Innovation</strong> and <strong>Flight Safety</strong> submission is worth <strong>20 KUDOS</strong>.</div></div>
