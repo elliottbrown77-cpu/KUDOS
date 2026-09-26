@@ -270,13 +270,29 @@ function individualPsfEngagement(profileId){
   const weeklyRows=(state.data?.weeklyPsfEngagement||[])
     .filter(x=>x.profile_id===profileId && x.week_start===currentWeek);
   const byName=new Map(weeklyRows.map(x=>[x.psf_name,x]));
+
+  // Work out which current-week challenge contributions created each PSF.
+  const challengeSources={};
+  (state.data?.progressHistory||[])
+    .filter(x=>x.profile_id===profileId && String(x.entry_date||'')>=currentWeek && Number(x.daily_value||0)>0)
+    .forEach(x=>{
+      const challenge=challengeById(x.challenge_id);
+      if(!challenge) return;
+      (challenge.psfs||[]).forEach(psf=>{
+        (challengeSources[psf] ||= new Set()).add(challenge.title);
+      });
+    });
+
   const factors=PSFS.map(name=>{
     const row=byName.get(name);
+    const sources=[...(challengeSources[name]||[])];
+    if((row?.source_types||[]).includes('innovation') && !sources.includes('Innovation')) sources.push('Innovation');
     return {
       name,
       engaged:Boolean(row),
       actionCount:Number(row?.action_count||0),
-      sourceTypes:row?.source_types||[]
+      sourceTypes:row?.source_types||[],
+      sources
     };
   });
   const engaged=factors.filter(x=>x.engaged);
@@ -289,7 +305,7 @@ function psfEngagementCard(profileId,teamId){
   const chips=personal.factors.map(f=>`
     <div class="psf-engagement-item ${f.engaged?'engaged':'not-engaged'}" title="${f.engaged?esc(`${f.actionCount} contribution${f.actionCount===1?'':'s'} this week${f.sourceTypes?.includes('innovation')?' • includes Innovation → Tooling & Equipment':''}`):'Not tackled this week'}">
       <span class="psf-state">${f.engaged?'✓':'○'}</span>
-      <span><strong>${esc(f.name)}</strong><small>${f.engaged?`${f.actionCount} contribution${f.actionCount===1?'':'s'} this week`:'Not tackled this week'}</small></span>
+      <span><strong>${esc(f.name)}</strong><small>${f.engaged?`${f.actionCount} contribution${f.actionCount===1?'':'s'} this week`:'Not tackled this week'}</small>${f.engaged&&f.sources.length?`<span class="psf-source-list">${f.sources.map(s=>`<span class="psf-source-chip">${esc(s)}</span>`).join('')}</span>`:''}</span>
     </div>`
   ).join('');
   return `<div class="card psf-engagement-card">
