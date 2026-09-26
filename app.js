@@ -68,7 +68,7 @@ function loadDemo(){
 function saveDemo(){ if(state.mode==='demo') localStorage.setItem('kudos_demo_data',JSON.stringify(state.data)); }
 
 async function loadSupabase(){
-  const [teams,profiles,challenges,psfs,challengePsfs,challengeProgress,profileTotals,profileScores,teamScores,progressHistory,progressEntryFeed,achievementTotals,weeklyActivity] = await Promise.all([
+  const [teams,profiles,challenges,psfs,challengePsfs,challengeProgress,profileTotals,profileScores,teamScores,progressHistory,progressEntryFeed,achievementTotals,weeklyActivity,weeklyPsfEngagement] = await Promise.all([
     supabase.from('teams').select('*').order('name'),
     supabase.from('profiles').select('*').eq('active',true).order('name'),
     supabase.from('challenges').select('*').eq('active',true).order('start_date'),
@@ -81,9 +81,10 @@ async function loadSupabase(){
     supabase.from('progress_history').select('*').order('entry_date'),
     supabase.from('progress_entry_feed').select('*').order('entry_date',{ascending:false}).order('created_at',{ascending:false}),
     supabase.from('profile_achievement_totals').select('*'),
-    supabase.from('profile_weekly_activity').select('*').order('week_start')
+    supabase.from('profile_weekly_activity').select('*').order('week_start'),
+    supabase.from('profile_weekly_psf_engagement').select('*').order('week_start')
   ]);
-  const err=[teams,profiles,challenges,psfs,challengePsfs,challengeProgress,profileTotals,profileScores,teamScores,progressHistory,progressEntryFeed,achievementTotals,weeklyActivity].find(x=>x.error);
+  const err=[teams,profiles,challenges,psfs,challengePsfs,challengeProgress,profileTotals,profileScores,teamScores,progressHistory,progressEntryFeed,achievementTotals,weeklyActivity,weeklyPsfEngagement].find(x=>x.error);
   if(err?.error) throw err.error;
   const psfMap = Object.fromEntries(psfs.data.map(x=>[x.id,x.name]));
   const cPsfs = {};
@@ -103,6 +104,7 @@ async function loadSupabase(){
     progressEntryFeed:progressEntryFeed.data||[],
     achievementTotals:achievementTotals.data||[],
     weeklyActivity:weeklyActivity.data||[],
+    weeklyPsfEngagement:weeklyPsfEngagement.data||[],
     progress:[], recognition:[], innovation:[], safety:[]
   };
 }
@@ -264,23 +266,21 @@ function psfCoverage(teamId){
 }
 
 function individualPsfEngagement(profileId){
-  const challengeIds=new Set(
-    (state.data?.profileTotals||[])
-      .filter(x=>x.profile_id===profileId && Number(x.contribution||0)>0)
-      .map(x=>x.challenge_id)
-  );
+  const currentWeek=weekStartISO();
+  const weeklyRows=(state.data?.weeklyPsfEngagement||[])
+    .filter(x=>x.profile_id===profileId && x.week_start===currentWeek);
+  const byName=new Map(weeklyRows.map(x=>[x.psf_name,x]));
   const factors=PSFS.map(name=>{
-    const challenges=(state.data?.challenges||[])
-      .filter(c=>c.active!==false && challengeIds.has(c.id) && (c.psfs||[]).includes(name));
+    const row=byName.get(name);
     return {
       name,
-      engaged:challenges.length>0,
-      challengeCount:challenges.length,
-      challenges:challenges.map(c=>c.title)
+      engaged:Boolean(row),
+      actionCount:Number(row?.action_count||0),
+      sourceTypes:row?.source_types||[]
     };
   });
   const engaged=factors.filter(x=>x.engaged);
-  return {count:engaged.length,factors,engaged};
+  return {count:engaged.length,factors,engaged,weekStart:currentWeek};
 }
 function psfEngagementCard(profileId,teamId){
   if(!profileId) return '';
@@ -289,20 +289,20 @@ function psfEngagementCard(profileId,teamId){
   const chips=personal.factors.map(f=>`
     <div class="psf-engagement-item ${f.engaged?'engaged':'not-engaged'}" title="${f.engaged?esc(f.challenges.join(', ')):'No contribution yet to a linked challenge'}">
       <span class="psf-state">${f.engaged?'✓':'○'}</span>
-      <span><strong>${esc(f.name)}</strong><small>${f.engaged?`${f.challengeCount} linked challenge${f.challengeCount===1?'':'s'} tackled`:'Not yet tackled'}</small></span>
+      <span><strong>${esc(f.name)}</strong><small>${f.engaged?`${f.actionCount} contribution${f.actionCount===1?'':'s'} this week`:'Not tackled this week'}</small></span>
     </div>`
   ).join('');
   return `<div class="card psf-engagement-card">
     <div class="psf-engagement-head">
       <div>
         <div class="eyebrow">MY PERFORMANCE SHAPING FACTORS</div>
-        <h3>${personal.count}/9 PSFs actively tackled</h3>
-        <p class="help">A PSF counts as tackled when you contribute to a challenge linked to that factor.</p>
+        <h3>${personal.count}/9 PSFs tackled this week</h3>
+        <p class="help">Weekly coverage resets each Monday. A linked challenge contribution counts toward its PSFs; an Innovation contribution counts toward Tooling &amp; Equipment.</p>
       </div>
       <div class="psf-coverage-dial"><b>${personal.count}</b><span>of 9</span></div>
     </div>
     <div class="psf-engagement-grid">${chips}</div>
-    <div class="psf-portfolio-note">Your team's current challenge portfolio covers <strong>${portfolio.count}/9 PSFs</strong>. The grey factors above are opportunities for you to broaden your own performance habits.</div>
+    <div class="psf-portfolio-note">This is your <strong>current-week</strong> PSF coverage. Your team's challenge portfolio covers <strong>${portfolio.count}/9 PSFs</strong>; grey factors are opportunities to broaden this week's performance habits.</div>
   </div>`;
 }
 
@@ -513,7 +513,7 @@ function contributionQuickActions(home=false){
       <div>
         <div class="eyebrow">INNOVATION</div>
         <h3>Submit an idea</h3>
-        <p class="challenge-desc">Suggest something that makes the team safer, simpler or more effective.</p>
+        <p class="challenge-desc">Suggest something that makes the team safer, simpler or more effective. Innovation contributions also count toward the <strong>Tooling &amp; Equipment</strong> Performance Shaping Factor.</p>
         <div class="score-badge">1 idea • +20 KUDOS</div>
       </div>
       <button class="btn primary" data-special="innovation">Submit innovation</button>
@@ -528,7 +528,7 @@ function homeView(){
   <div class="grid four"><div class="card metric"><div class="label">My KUDOS score</div><div class="value">${fmt(profileScore(p?.id))}</div><div class="metric-rank">${kudosRankTag(p?.id,true)}</div><div class="sub">Challenge score from % of target + 20 KUDOS contributions</div></div>
   <div class="card metric"><div class="label">Team KUDOS score</div><div class="value">${fmt(teamScore(team))}</div><div class="sub">Combined individual contribution</div></div>
   <div class="card metric"><div class="label">Challenge completion</div><div class="value">${pct(avg)}</div><div class="sub">Average capped at 100% per challenge</div></div>
-  <div class="card metric"><div class="label">My PSF engagement</div><div class="value">${individualPsfEngagement(p?.id).count}/9</div><div class="sub">Performance Shaping Factors you are actively tackling</div></div></div>
+  <div class="card metric"><div class="label">My PSFs this week</div><div class="value">${individualPsfEngagement(p?.id).count}/9</div><div class="sub">Performance Shaping Factors tackled since Monday</div></div></div>
   ${psfEngagementCard(p?.id,team)}
   ${kudosStatusCard(p?.id)}
   <div class="section-title contribution-title"><h2>Make a contribution</h2><p>Safety • Recognition • Innovation</p></div>
