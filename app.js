@@ -287,7 +287,7 @@ function psfEngagementCard(profileId,teamId){
   const personal=individualPsfEngagement(profileId);
   const portfolio=psfCoverage(teamId);
   const chips=personal.factors.map(f=>`
-    <div class="psf-engagement-item ${f.engaged?'engaged':'not-engaged'}" title="${f.engaged?esc(f.challenges.join(', ')):'No contribution yet to a linked challenge'}">
+    <div class="psf-engagement-item ${f.engaged?'engaged':'not-engaged'}" title="${f.engaged?esc(`${f.actionCount} contribution${f.actionCount===1?'':'s'} this week${f.sourceTypes?.includes('innovation')?' • includes Innovation → Tooling & Equipment':''}`):'Not tackled this week'}">
       <span class="psf-state">${f.engaged?'✓':'○'}</span>
       <span><strong>${esc(f.name)}</strong><small>${f.engaged?`${f.actionCount} contribution${f.actionCount===1?'':'s'} this week`:'Not tackled this week'}</small></span>
     </div>`
