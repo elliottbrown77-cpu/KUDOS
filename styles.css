@@ -191,3 +191,21 @@ main{max-width:1120px;margin:0 auto;padding:18px 16px 40px}
   .achievement-grid{grid-template-columns:1fr}
   .next-badge{align-items:flex-start;flex-direction:column}
 }
+
+
+/* Individual Performance Shaping Factor engagement */
+.psf-engagement-card{margin-top:16px;padding:20px}
+.psf-engagement-head{display:flex;align-items:flex-start;justify-content:space-between;gap:20px}
+.psf-engagement-head h3{margin:5px 0 4px;color:var(--navy,#0C2338)}
+.psf-coverage-dial{display:grid;place-items:center;align-content:center;flex:0 0 76px;width:76px;height:76px;border-radius:50%;background:var(--navy,#0C2338);color:#fff}
+.psf-coverage-dial b{font-size:26px;line-height:1}.psf-coverage-dial span{font-size:10px;font-weight:800;margin-top:3px}
+.psf-engagement-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;margin-top:16px}
+.psf-engagement-item{display:flex;align-items:flex-start;gap:9px;padding:11px;border-radius:13px;border:1px solid var(--line,#dde2df);min-height:62px}
+.psf-engagement-item.engaged{background:#E7EEE8;border-color:#BED0C1}
+.psf-engagement-item.not-engaged{background:#F5F6F7;color:#77838b}
+.psf-state{display:grid;place-items:center;flex:0 0 24px;width:24px;height:24px;border-radius:50%;font-weight:900;background:#fff;border:1px solid currentColor}
+.psf-engagement-item strong{display:block;font-size:11px;line-height:1.2}
+.psf-engagement-item small{display:block;margin-top:4px;font-size:9px;line-height:1.25;color:var(--muted,#67747d)}
+.psf-portfolio-note{margin-top:12px;padding-top:12px;border-top:1px solid var(--line,#dde2df);font-size:11px;line-height:1.45;color:var(--muted,#67747d)}
+@media(max-width:850px){.psf-engagement-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:520px){.psf-engagement-head{align-items:center}.psf-engagement-grid{grid-template-columns:1fr}.psf-coverage-dial{width:66px;height:66px;flex-basis:66px}}
