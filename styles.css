@@ -209,3 +209,8 @@ main{max-width:1120px;margin:0 auto;padding:18px 16px 40px}
 .psf-portfolio-note{margin-top:12px;padding-top:12px;border-top:1px solid var(--line,#dde2df);font-size:11px;line-height:1.45;color:var(--muted,#67747d)}
 @media(max-width:850px){.psf-engagement-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:520px){.psf-engagement-head{align-items:center}.psf-engagement-grid{grid-template-columns:1fr}.psf-coverage-dial{width:66px;height:66px;flex-basis:66px}}
+
+
+.psf-source-list{display:flex;flex-wrap:wrap;gap:4px;margin-top:7px}
+.psf-source-chip{display:inline-flex;align-items:center;max-width:100%;padding:3px 6px;border-radius:999px;background:#fff;border:1px solid var(--line,#dde2df);font-size:9px;font-weight:800;line-height:1.2;color:var(--navy,#0C2338)}
+.psf-engagement-item.engaged .psf-source-chip{background:rgba(255,255,255,.78)}
