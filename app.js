@@ -330,11 +330,7 @@ function longestWeeklyStreak(profileId){
   return best;
 }
 function personalCappedChallenges(profileId){
-  return (state.data?.profileTotals||[]).filter(x=>{
-    if(x.profile_id!==profileId) return false;
-    const c=challengeById(x.challenge_id);
-    return c&&c.source_type==='progress'&&Number(c.target||0)>0&&Number(x.contribution||0)>=Number(c.target)*0.1;
-  }).length;
+  return Number(achievementSummary(profileId).capped_challenges||0);
 }
 function tierBadge(count,tiers,baseTitle,icon,description){
   let earned=null;
