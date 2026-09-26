@@ -68,7 +68,7 @@ function loadDemo(){
 function saveDemo(){ if(state.mode==='demo') localStorage.setItem('kudos_demo_data',JSON.stringify(state.data)); }
 
 async function loadSupabase(){
-  const [teams,profiles,challenges,psfs,challengePsfs,challengeProgress,profileTotals,profileScores,teamScores,progressHistory,progressEntryFeed] = await Promise.all([
+  const [teams,profiles,challenges,psfs,challengePsfs,challengeProgress,profileTotals,profileScores,teamScores,progressHistory,progressEntryFeed,achievementTotals,weeklyActivity] = await Promise.all([
     supabase.from('teams').select('*').order('name'),
     supabase.from('profiles').select('*').eq('active',true).order('name'),
     supabase.from('challenges').select('*').eq('active',true).order('start_date'),
@@ -79,9 +79,11 @@ async function loadSupabase(){
     supabase.from('profile_scores').select('*'),
     supabase.from('team_scores').select('*'),
     supabase.from('progress_history').select('*').order('entry_date'),
-    supabase.from('progress_entry_feed').select('*').order('entry_date',{ascending:false}).order('created_at',{ascending:false})
+    supabase.from('progress_entry_feed').select('*').order('entry_date',{ascending:false}).order('created_at',{ascending:false}),
+    supabase.from('profile_achievement_totals').select('*'),
+    supabase.from('profile_weekly_activity').select('*').order('week_start')
   ]);
-  const err=[teams,profiles,challenges,psfs,challengePsfs,challengeProgress,profileTotals,profileScores,teamScores,progressHistory,progressEntryFeed].find(x=>x.error);
+  const err=[teams,profiles,challenges,psfs,challengePsfs,challengeProgress,profileTotals,profileScores,teamScores,progressHistory,progressEntryFeed,achievementTotals,weeklyActivity].find(x=>x.error);
   if(err?.error) throw err.error;
   const psfMap = Object.fromEntries(psfs.data.map(x=>[x.id,x.name]));
   const cPsfs = {};
@@ -99,6 +101,8 @@ async function loadSupabase(){
     teamScores:teamScores.data,
     progressHistory:progressHistory.data,
     progressEntryFeed:progressEntryFeed.data||[],
+    achievementTotals:achievementTotals.data||[],
+    weeklyActivity:weeklyActivity.data||[],
     progress:[], recognition:[], innovation:[], safety:[]
   };
 }
@@ -259,10 +263,173 @@ function psfCoverage(teamId){
   return {count:covered.size,covered};
 }
 
+function ordinal(n){
+  n=Number(n||0);
+  const mod100=n%100;
+  if(mod100>=11&&mod100<=13) return `${n}th`;
+  return `${n}${n%10===1?'st':n%10===2?'nd':n%10===3?'rd':'th'}`;
+}
+function kudosRanking(profileId){
+  const rows=(state.data?.profiles||[])
+    .filter(p=>p.active!==false)
+    .map(p=>({profile_id:p.id,score:profileScore(p.id),name:p.name}))
+    .sort((a,b)=>b.score-a.score||a.name.localeCompare(b.name));
+  let rank=0,lastScore=null,seen=0;
+  rows.forEach(r=>{
+    seen++;
+    if(lastScore===null||r.score!==lastScore) rank=seen;
+    r.rank=rank;
+    lastScore=r.score;
+  });
+  const row=rows.find(r=>r.profile_id===profileId);
+  const total=rows.length||1;
+  const exactRank=row?.rank||total;
+  const topPercent=Math.max(1,Math.ceil((exactRank/total)*100));
+  const score=Number(row?.score||0);
+  let tag='KUDOS Starter',tone='starter';
+  if(score>0&&topPercent<=10){tag='KUDOS Elite';tone='elite';}
+  else if(score>0&&topPercent<=25){tag='KUDOS Leader';tone='leader';}
+  else if(score>0&&topPercent<=50){tag='KUDOS Contributor';tone='contributor';}
+  return {rank:exactRank,total,topPercent,score,tag,tone};
+}
+function kudosRankTag(profileId,compact=false){
+  if(!profileId) return '';
+  const r=kudosRanking(profileId);
+  return `<span class="kudos-rank-tag rank-${r.tone} ${compact?'compact':''}">${esc(r.tag)}</span>`;
+}
+function achievementSummary(profileId){
+  return (state.data?.achievementTotals||[]).find(x=>x.profile_id===profileId)||{
+    profile_id:profileId,total_actions:0,progress_entries:0,recognition_entries:0,
+    innovation_entries:0,safety_entries:0,distinct_challenges:0,active_weeks:0
+  };
+}
+function weekStartISO(dateString=today()){
+  const d=new Date(`${dateString}T12:00:00`);
+  const offset=(d.getDay()+6)%7;
+  d.setDate(d.getDate()-offset);
+  return d.toISOString().slice(0,10);
+}
+function shiftWeek(weekStart,deltaWeeks){
+  const d=new Date(`${weekStart}T12:00:00`);
+  d.setDate(d.getDate()+deltaWeeks*7);
+  return d.toISOString().slice(0,10);
+}
+function profileWeeklyRows(profileId){
+  return (state.data?.weeklyActivity||[])
+    .filter(x=>x.profile_id===profileId)
+    .sort((a,b)=>String(a.week_start).localeCompare(String(b.week_start)));
+}
+function longestWeeklyStreak(profileId){
+  const weeks=[...new Set(profileWeeklyRows(profileId).map(x=>x.week_start))].sort();
+  let best=0,current=0,previous='';
+  weeks.forEach(w=>{
+    current=previous&&shiftWeek(previous,1)===w ? current+1 : 1;
+    best=Math.max(best,current);
+    previous=w;
+  });
+  return best;
+}
+function personalCappedChallenges(profileId){
+  return (state.data?.profileTotals||[]).filter(x=>{
+    if(x.profile_id!==profileId) return false;
+    const c=challengeById(x.challenge_id);
+    return c&&c.source_type==='progress'&&Number(c.target||0)>0&&Number(x.contribution||0)>=Number(c.target)*0.1;
+  }).length;
+}
+function tierBadge(count,tiers,baseTitle,icon,description){
+  let earned=null;
+  tiers.forEach(t=>{if(count>=t.min) earned=t;});
+  if(!earned) return null;
+  return {title:`${baseTitle} · ${earned.label}`,icon,description:description(earned),kind:'permanent'};
+}
+function weeklyBadges(profileId){
+  const current=weekStartISO();
+  const rows=state.data?.weeklyActivity||[];
+  const row=rows.find(x=>x.profile_id===profileId&&x.week_start===current);
+  if(!row||Number(row.action_count||0)<=0) return [];
+  const p=profileById(profileId);
+  const teamId=p?.team_id;
+  const currentRows=rows.filter(x=>x.week_start===current&&Number(x.kudos_gained||0)>0);
+  const teamIds=new Set((state.data?.profiles||[]).filter(x=>x.team_id===teamId).map(x=>x.id));
+  const teamRows=currentRows.filter(x=>teamIds.has(x.profile_id));
+  const maxGlobal=Math.max(0,...currentRows.map(x=>Number(x.kudos_gained||0)));
+  const maxTeam=Math.max(0,...teamRows.map(x=>Number(x.kudos_gained||0)));
+  const previousWeek=shiftWeek(current,-1);
+  const previous=rows.find(x=>x.profile_id===profileId&&x.week_start===previousWeek);
+  const delta=previous?Number(row.kudos_gained||0)-Number(previous.kudos_gained||0):null;
+  const improved=currentRows.map(x=>{
+    const prev=rows.find(y=>y.profile_id===x.profile_id&&y.week_start===previousWeek);
+    return prev?{profile_id:x.profile_id,delta:Number(x.kudos_gained||0)-Number(prev.kudos_gained||0)}:null;
+  }).filter(Boolean);
+  const maxDelta=Math.max(0,...improved.map(x=>x.delta));
+  const previousActive=profileWeeklyRows(profileId).filter(x=>x.week_start<current).at(-1);
+  const gapWeeks=previousActive?Math.round((new Date(`${current}T12:00:00`)-new Date(`${previousActive.week_start}T12:00:00`))/(7*86400000)):0;
+  const out=[{title:'Showing Up',icon:'✓',description:'Contributed to KUDOS this week.',kind:'weekly'}];
+  if(maxTeam>0&&Number(row.kudos_gained||0)===maxTeam) out.push({title:'Team MVP This Week',icon:'◆',description:'Highest KUDOS gain in your team this week.',kind:'weekly'});
+  if(maxGlobal>0&&Number(row.kudos_gained||0)===maxGlobal) out.push({title:'Top Contributor This Week',icon:'★',description:'Highest KUDOS gain across all teams this week.',kind:'weekly'});
+  if(previous&&delta>0) out.push({title:'Momentum',icon:'↗',description:'Improved your KUDOS gain compared with last week.',kind:'weekly'});
+  if(previous&&delta===maxDelta&&maxDelta>0) out.push({title:'Most Improved This Week',icon:'↑',description:'Largest week-on-week KUDOS gain.',kind:'weekly'});
+  if(gapWeeks>=2) out.push({title:'Comeback',icon:'↻',description:'Back contributing after at least one full week away.',kind:'weekly'});
+  return out;
+}
+function earnedBadges(profileId){
+  const a=achievementSummary(profileId);
+  const streak=longestWeeklyStreak(profileId);
+  const typeCount=[a.progress_entries,a.recognition_entries,a.innovation_entries,a.safety_entries].filter(x=>Number(x||0)>0).length;
+  const badges=[];
+  if(Number(a.total_actions||0)>=1) badges.push({title:'First Step',icon:'1',description:'Made your first KUDOS contribution.',kind:'permanent'});
+  if(Number(a.total_actions||0)>=3) badges.push({title:'Getting Going',icon:'3',description:'Made at least 3 KUDOS contributions.',kind:'permanent'});
+  const consistency=tierBadge(streak,[{min:2,label:'Bronze'},{min:4,label:'Silver'},{min:8,label:'Gold'}],'Consistency','∞',t=>`${t.min}+ consecutive active weeks.`);
+  if(consistency) badges.push(consistency);
+  if(Number(a.distinct_challenges||0)>=3) badges.push({title:'Team Player',icon:'T',description:'Contributed to at least 3 different challenges.',kind:'permanent'});
+  if(personalCappedChallenges(profileId)>=1) badges.push({title:'Challenge Finisher',icon:'✓',description:'Reached the 100-KUDOS personal cap on a challenge.',kind:'permanent'});
+  const recogniser=tierBadge(Number(a.recognition_entries||0),[{min:1,label:'Bronze'},{min:5,label:'Silver'},{min:10,label:'Gold'}],'Recogniser','★',t=>`${t.min}+ recognition submission${t.min===1?'':'s'}.`);
+  if(recogniser) badges.push(recogniser);
+  const ideas=tierBadge(Number(a.innovation_entries||0),[{min:1,label:'Bronze'},{min:3,label:'Silver'},{min:5,label:'Gold'}],'Idea Generator','↗',t=>`${t.min}+ innovation submission${t.min===1?'':'s'}.`);
+  if(ideas) badges.push(ideas);
+  if(Number(a.safety_entries||0)>=1) badges.push({title:'Safety Minded',icon:'!',description:'Made a Flight Safety contribution.',kind:'permanent'});
+  if(typeCount>=3) badges.push({title:'All-Rounder',icon:'◎',description:'Contributed across at least 3 KUDOS contribution types.',kind:'permanent'});
+  return [...weeklyBadges(profileId),...badges];
+}
+function nextBadgeGoal(profileId){
+  const a=achievementSummary(profileId);
+  const streak=longestWeeklyStreak(profileId);
+  if(Number(a.total_actions||0)<1) return {title:'First Step',progress:'0 / 1',text:'Make your first KUDOS contribution.'};
+  if(Number(a.total_actions||0)<3) return {title:'Getting Going',progress:`${a.total_actions} / 3`,text:'Reach 3 total contributions.'};
+  if(streak<2) return {title:'Consistency · Bronze',progress:`${streak} / 2 weeks`,text:'Contribute in 2 consecutive weeks.'};
+  if(Number(a.distinct_challenges||0)<3) return {title:'Team Player',progress:`${a.distinct_challenges} / 3`,text:'Contribute to 3 different challenges.'};
+  if(Number(a.recognition_entries||0)<5) return {title:'Recogniser · Silver',progress:`${a.recognition_entries} / 5`,text:'Recognise positive contribution from others.'};
+  if(Number(a.innovation_entries||0)<3) return {title:'Idea Generator · Silver',progress:`${a.innovation_entries} / 3`,text:'Keep sharing improvement ideas.'};
+  if(streak<4) return {title:'Consistency · Silver',progress:`${streak} / 4 weeks`,text:'Build a 4-week contribution streak.'};
+  if(Number(a.recognition_entries||0)<10) return {title:'Recogniser · Gold',progress:`${a.recognition_entries} / 10`,text:'Reach 10 recognition submissions.'};
+  if(Number(a.innovation_entries||0)<5) return {title:'Idea Generator · Gold',progress:`${a.innovation_entries} / 5`,text:'Reach 5 innovation submissions.'};
+  if(streak<8) return {title:'Consistency · Gold',progress:`${streak} / 8 weeks`,text:'Build an 8-week contribution streak.'};
+  return {title:'Keep the momentum',progress:'',text:'Keep contributing and look out for weekly achievement badges.'};
+}
+function badgeHtml(b){
+  return `<div class="achievement-badge ${b.kind==='weekly'?'weekly-badge':''}"><span class="badge-icon">${esc(b.icon)}</span><span><strong>${esc(b.title)}</strong><small>${esc(b.description)}</small></span></div>`;
+}
+function kudosStatusCard(profileId){
+  if(!profileId) return '';
+  const r=kudosRanking(profileId);
+  const badges=earnedBadges(profileId);
+  const next=nextBadgeGoal(profileId);
+  return `<div class="card kudos-status-card">
+    <div class="kudos-status-head">
+      <div><div class="eyebrow">MY KUDOS STATUS</div><h3>${kudosRankTag(profileId)} <span class="rank-position">${ordinal(r.rank)} of ${r.total} • Top ${r.topPercent}%</span></h3></div>
+      <div class="status-score"><b>${fmt(r.score)}</b><span>KUDOS</span></div>
+    </div>
+    <div class="badge-section-head"><strong>Badges earned</strong><span>${badges.length}</span></div>
+    <div class="achievement-grid">${badges.length?badges.map(badgeHtml).join(''):'<div class="empty compact-empty">Your first badge is one contribution away.</div>'}</div>
+    <div class="next-badge"><div><span>Next badge</span><strong>${esc(next.title)}</strong><small>${esc(next.text)}</small></div>${next.progress?`<b>${esc(next.progress)}</b>`:''}</div>
+  </div>`;
+}
+
 function header(){
   const p=currentProfile();
+  const rank=p?kudosRanking(p.id):null;
   return `<header class="topbar"><div class="brand"><img src="kudos-header.svg?v=1" alt="KUDOS logo"><div><strong>KUDOS</strong><small>CHF Human Performance</small></div></div>
-  <button class="profile-chip" data-action="profile"><div>${esc(p?.name||'Select profile')}</div><span>${esc(p?teamName(p.team_id):'')}</span></button></header>`;
+  <button class="profile-chip" data-action="profile"><div>${esc(p?.name||'Select profile')}</div><span>${esc(p?teamName(p.team_id):'')}${rank?` • ${esc(rank.tag)}`:''}</span></button></header>`;
 }
 function nav(){
   const items=[['home','⌂','Home'],['challenges','◎','Challenges'],['log','＋','Log'],['progress','↗','Progress'],['reports','▥','Reports'],['contribute','★','Contribute'],['rep','⚙','Rep']];
@@ -319,10 +486,11 @@ function homeView(){
   const p=currentProfile(), team=p?.team_id || state.teamFilter, challenges=activeTeamChallenges(team), avg=teamAverage(team), cov=psfCoverage(team);
   return `<section class="hero"><div><div class="gold" style="font-weight:900;letter-spacing:.12em">KUDOS</div><h1>CHF HUMAN<br><span class="gold">PERFORMANCE</span></h1><p>Team challenges built around the factors that shape performance. Small actions. Better performance. Challenge progress tracks the real measure, while KUDOS points reward the value of the contribution.</p><span class="strap">READY TO LEAD • READY TO FIGHT • READY TO WIN</span></div></section>
   <div class="section-title"><h2>${esc(teamName(team))} overview</h2><p>${state.mode==='demo'?'Demo mode – ready for Supabase':'Live shared data'}</p></div>
-  <div class="grid four"><div class="card metric"><div class="label">My KUDOS score</div><div class="value">${fmt(profileScore(p?.id))}</div><div class="sub">Challenge score from % of target + 20 KUDOS contributions</div></div>
+  <div class="grid four"><div class="card metric"><div class="label">My KUDOS score</div><div class="value">${fmt(profileScore(p?.id))}</div><div class="metric-rank">${kudosRankTag(p?.id,true)}</div><div class="sub">Challenge score from % of target + 20 KUDOS contributions</div></div>
   <div class="card metric"><div class="label">Team KUDOS score</div><div class="value">${fmt(teamScore(team))}</div><div class="sub">Combined individual contribution</div></div>
   <div class="card metric"><div class="label">Challenge completion</div><div class="value">${pct(avg)}</div><div class="sub">Average capped at 100% per challenge</div></div>
   <div class="card metric"><div class="label">PSF coverage</div><div class="value">${cov.count}/9</div><div class="sub">Across the current challenge portfolio</div></div></div>
+  ${kudosStatusCard(p?.id)}
   <div class="section-title contribution-title"><h2>Make a contribution</h2><p>Safety • Recognition • Innovation</p></div>
   <div class="card scoring-explainer"><strong>How KUDOS scoring works</strong><div class="help">Challenge progress still tracks the real measure, such as kg or km. Your KUDOS score comes from the share of the team target you contribute: <strong>1% of target = 10 KUDOS</strong>, up to a maximum of <strong>100 KUDOS per person per challenge</strong>. Each <strong>Recognition</strong>, <strong>Innovation</strong> and <strong>Flight Safety</strong> submission is worth <strong>20 KUDOS</strong>.</div></div>
   ${contributionQuickActions(true)}
@@ -577,7 +745,7 @@ function reportsView(){
     return `<div class="card leaderboard-card"><div class="challenge-head"><div><h3>${esc(g.title)}</h3><div class="help">${esc(g.unit)} • ${g.challenges.length} team challenge${g.challenges.length===1?'':'s'}</div></div><span class="unit-badge">Top 5</span></div>${top.length?`<div class="mini-table"><table><thead><tr><th>Rank</th><th>Individual</th><th>Contribution</th></tr></thead><tbody>${rows}</tbody></table></div>`:'<div class="empty compact-empty">No contributions yet.</div>'}</div>`;
   }).join('');
 
-  const topOverallRows=topOverall.map((r,i)=>`<tr><td>${rankPill(i+1)}</td><td><strong>${esc(r.name)}</strong><div class="help">${esc(r.team)}</div></td><td class="num"><strong>${fmt(r.score)}</strong></td></tr>`).join('');
+  const topOverallRows=topOverall.map((r,i)=>`<tr><td>${rankPill(i+1)}</td><td><strong>${esc(r.name)}</strong><div class="help">${esc(r.team)}</div></td><td>${kudosRankTag(r.profile_id,true)}</td><td class="num"><strong>${fmt(r.score)}</strong></td></tr>`).join('');
 
   return `<div class="section-title"><h2>Reports</h2><p>Individual contribution and team standings</p></div>
   <div class="report-intro card"><div><strong>How the overall lead is calculated</strong><div class="help">Overall challenge position uses each team's average percentage completion across its active challenges, capped at 100% per challenge. KUDOS points are shown separately.</div></div></div>
@@ -596,7 +764,7 @@ function reportsView(){
   <div class="grid two">${topByChallenge||'<div class="empty">No challenge contribution data yet.</div>'}</div>
 
   <div class="section-title"><h2>Top 5 overall KUDOS scores</h2><p>Across challenge activity, recognition, innovation and safety contributions</p></div>
-  <div class="card leaderboard-card">${topOverallRows?`<div class="mini-table"><table><thead><tr><th>Rank</th><th>Individual</th><th>KUDOS score</th></tr></thead><tbody>${topOverallRows}</tbody></table></div>`:'<div class="empty compact-empty">No scores yet.</div>'}</div>
+  <div class="card leaderboard-card">${topOverallRows?`<div class="mini-table"><table><thead><tr><th>Rank</th><th>Individual</th><th>Status</th><th>KUDOS score</th></tr></thead><tbody>${topOverallRows}</tbody></table></div>`:'<div class="empty compact-empty">No scores yet.</div>'}</div>
   <div class="notice" style="margin-top:14px">Challenge team comparisons currently group challenges when the <strong>challenge name, unit and contribution type match</strong>. If teams use different names for the same intended challenge, they will appear as separate challenge groups.</div>`;
 }
 
