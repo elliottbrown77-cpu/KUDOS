@@ -305,7 +305,7 @@ function psfEngagementCard(profileId,teamId){
   const chips=personal.factors.map(f=>`
     <div class="psf-engagement-item ${f.engaged?'engaged':'not-engaged'}" title="${f.engaged?esc(`${f.actionCount} contribution${f.actionCount===1?'':'s'} this week${f.sourceTypes?.includes('innovation')?' • includes Innovation → Tooling & Equipment':''}`):'Not tackled this week'}">
       <span class="psf-state">${f.engaged?'✓':'○'}</span>
-      <span><strong>${esc(f.name)}</strong><small>${f.engaged?`${f.actionCount} contribution${f.actionCount===1?'':'s'} this week`:'Not tackled this week'}</small>${f.engaged&&f.sources.length?`<span class="psf-source-list">${f.sources.map(s=>`<span class="psf-source-chip">${esc(s)}</span>`).join('')}</span>`:''}</span>
+      <span><strong>${esc(f.name)}</strong><small>${f.engaged?`${f.actionCount} contribution${f.actionCount===1?'':'s'} this week`:'Not tackled this week'}</small>${f.name==='Tooling & Equipment'?'<span class="psf-standard-note">Submitting an idea contributes to this PSF.</span>':''}${f.engaged&&f.sources.length?`<span class="psf-source-list">${f.sources.map(s=>`<span class="psf-source-chip">${esc(s)}</span>`).join('')}</span>`:''}</span>
     </div>`
   ).join('');
   return `<div class="card psf-engagement-card">
