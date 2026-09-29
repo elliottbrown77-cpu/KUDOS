@@ -480,22 +480,30 @@ function kudosStatusCard(profileId){
   const r=kudosRanking(profileId);
   const badges=earnedBadges(profileId);
   const next=nextBadgeGoal(profileId);
-  return `<div class="card kudos-status-card">
-    <div class="kudos-status-head">
-      <div><div class="eyebrow">MY KUDOS STATUS</div><h3>${kudosRankTag(profileId)} <span class="rank-position">${ordinal(r.rank)} of ${r.total} • Top ${r.topPercent}%</span></h3></div>
-      <div class="status-score"><b>${fmt(r.score)}</b><span>KUDOS</span></div>
-    </div>
-    <details class="home-collapsible badges-collapsible">
-      <summary class="home-collapsible-summary">
-        <div><div class="eyebrow">MY KUDOS BADGES</div><strong>${badges.length} badge${badges.length===1?'':'s'} earned</strong></div>
-        <div class="summary-meta"><span class="summary-count">${badges.length}</span><span class="summary-chevron">⌄</span></div>
-      </summary>
-      <div class="home-collapsible-body">
-        <div class="achievement-grid">${badges.length?badges.map(badgeHtml).join(''):'<div class="empty compact-empty">Your first badge is one contribution away.</div>'}</div>
-        <div class="next-badge"><div><span>Next badge</span><strong>${esc(next.title)}</strong><small>${esc(next.text)}</small></div>${next.progress?`<b>${esc(next.progress)}</b>`:''}</div>
+  return `<details class="card metric kudos-metric-dropdown">
+    <summary class="kudos-metric-summary">
+      <div>
+        <div class="label">My KUDOS score</div>
+        <div class="value">${fmt(r.score)}</div>
+        <div class="metric-rank">${kudosRankTag(profileId,true)}</div>
+        <div class="sub">Challenge score from % of target + 20 KUDOS contributions</div>
       </div>
-    </details>
-  </div>`;
+      <span class="summary-chevron">⌄</span>
+    </summary>
+    <div class="kudos-metric-details">
+      <div class="kudos-detail-head">
+        <div>
+          <div class="eyebrow">MY KUDOS STATUS</div>
+          <strong>${esc(r.tag)}</strong>
+          <span>${ordinal(r.rank)} of ${r.total} • Top ${r.topPercent}%</span>
+        </div>
+        <div class="status-score"><b>${fmt(r.score)}</b><span>KUDOS</span></div>
+      </div>
+      <div class="badge-section-head"><strong>My KUDOS badges</strong><span>${badges.length}</span></div>
+      <div class="achievement-grid">${badges.length?badges.map(badgeHtml).join(''):'<div class="empty compact-empty">Your first badge is one contribution away.</div>'}</div>
+      <div class="next-badge"><div><span>Next badge</span><strong>${esc(next.title)}</strong><small>${esc(next.text)}</small></div>${next.progress?`<b>${esc(next.progress)}</b>`:''}</div>
+    </div>
+  </details>`;
 }
 
 function header(){
@@ -559,11 +567,10 @@ function homeView(){
   const p=currentProfile(), team=p?.team_id || state.teamFilter, challenges=activeTeamChallenges(team), avg=teamAverage(team), cov=psfCoverage(team);
   return `<section class="hero"><div><div class="gold" style="font-weight:900;letter-spacing:.12em">KUDOS</div><h1>CHF HUMAN<br><span class="gold">PERFORMANCE</span></h1><p>Team challenges built around the factors that shape performance. Small actions. Better performance. Challenge progress tracks the real measure, while KUDOS points reward the value of the contribution.</p><span class="strap">READY TO LEAD • READY TO FIGHT • READY TO WIN</span></div></section>
   <div class="section-title"><h2>${esc(teamName(team))} overview</h2><p>${state.mode==='demo'?'Demo mode – ready for Supabase':'Live shared data'}</p></div>
-  <div class="grid four"><div class="card metric"><div class="label">My KUDOS score</div><div class="value">${fmt(profileScore(p?.id))}</div><div class="metric-rank">${kudosRankTag(p?.id,true)}</div><div class="sub">Challenge score from % of target + 20 KUDOS contributions</div></div>
+  <div class="grid four">${kudosStatusCard(p?.id)}
   <div class="card metric"><div class="label">Team KUDOS score</div><div class="value">${fmt(teamScore(team))}</div><div class="sub">Combined individual contribution</div></div>
   <div class="card metric"><div class="label">Challenge completion</div><div class="value">${pct(avg)}</div><div class="sub">Average capped at 100% per challenge</div></div>
   ${psfEngagementCard(p?.id,team)}</div>
-  ${kudosStatusCard(p?.id)}
   <div class="section-title contribution-title"><h2>Make a contribution</h2><p>Safety • Recognition • Innovation</p></div>
   <div class="card scoring-explainer"><strong>How KUDOS scoring works</strong><div class="help">Challenge progress still tracks the real measure, such as kg or km. Your KUDOS score comes from the share of the team target you contribute: <strong>1% of target = 10 KUDOS</strong>, up to a maximum of <strong>100 KUDOS per person per challenge</strong>. Each <strong>Recognition</strong>, <strong>Innovation</strong> and <strong>Flight Safety</strong> submission is worth <strong>20 KUDOS</strong>.</div></div>
   ${contributionQuickActions(true)}
