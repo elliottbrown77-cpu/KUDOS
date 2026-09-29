@@ -416,3 +416,14 @@ main{max-width:1120px;margin:0 auto;padding:18px 16px 40px}
 @media (prefers-reduced-motion: reduce){
   .new-badge-alert,.badge-celebration,.newly-earned-badge{animation:none}
 }
+
+
+/* Push notification diagnostics/actions */
+.kudos-reminder-card{display:flex;align-items:center;justify-content:space-between;gap:16px}
+.kudos-reminder-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.kudos-reminder-actions .btn{white-space:nowrap}
+@media(max-width:620px){
+  .kudos-reminder-card{align-items:stretch;flex-direction:column}
+  .kudos-reminder-actions{justify-content:stretch}
+  .kudos-reminder-actions .btn{flex:1}
+}
