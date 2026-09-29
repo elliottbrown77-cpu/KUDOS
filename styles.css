@@ -352,3 +352,67 @@ main{max-width:1120px;margin:0 auto;padding:18px 16px 40px}
   .psf-metric-summary .summary-chevron,
   .kudos-metric-summary .summary-chevron{right:16px;bottom:12px}
 }
+
+
+/* New badge celebration */
+@keyframes kudosBadgePulse{
+  0%{transform:scale(1);box-shadow:0 5px 20px rgba(12,35,56,.05)}
+  18%{transform:scale(1.035);box-shadow:0 0 0 5px rgba(255,255,255,.14),0 12px 28px rgba(0,0,0,.24)}
+  38%{transform:scale(1)}
+  58%{transform:scale(1.025)}
+  100%{transform:scale(1)}
+}
+@keyframes badgePop{
+  0%{transform:scale(.82);opacity:0}
+  65%{transform:scale(1.08);opacity:1}
+  100%{transform:scale(1);opacity:1}
+}
+.new-badge-alert{animation:kudosBadgePulse 1.8s ease-out 1}
+.new-badge-callout{
+  position:absolute;
+  right:14px;
+  top:42px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  padding:5px 8px;
+  border-radius:999px;
+  background:#F4E8C6;
+  color:#5E4700;
+  border:1px solid #D8C18C;
+  font-size:8px;
+  font-weight:900;
+  letter-spacing:.08em;
+  animation:badgePop .5s ease-out both;
+}
+.badge-celebration{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  align-items:center;
+  margin-bottom:12px;
+  padding:10px 12px;
+  border-radius:12px;
+  background:#FFF7DE;
+  border:1px solid #E7D28D;
+  color:#6A5200;
+  animation:badgePop .5s ease-out both;
+}
+.badge-celebration strong{font-size:12px}
+.badge-celebration span{font-size:11px}
+.newly-earned-badge{animation:badgePop .55s ease-out both;border-color:#D8C18C;background:#FFF9E8}
+.new-badge-mini{
+  display:inline-flex;
+  margin-left:5px;
+  padding:2px 5px;
+  border-radius:999px;
+  background:#F4E8C6;
+  color:#5E4700;
+  font-size:8px;
+  font-style:normal;
+  line-height:1;
+  vertical-align:middle;
+}
+@media (prefers-reduced-motion: reduce){
+  .new-badge-alert,.badge-celebration,.newly-earned-badge{animation:none}
+}
