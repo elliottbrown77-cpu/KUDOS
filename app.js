@@ -1029,6 +1029,49 @@ function challengeModal(){
   const p=currentProfile(); const teamSelect=(state.mode==='supabase'&&['admin','org_admin'].includes(state.appUser?.role))?`<div class="field"><label>Team</label><select name="team_id" required>${state.data.teams.map(t=>`<option value="${t.id}" ${t.id===adminTeamId()?'selected':''}>${esc(t.name)}</option>`).join('')}</select></div>`:''; return `<div class="modal-backdrop" id="modal"><div class="modal"><h2>Create a team challenge</h2><form id="challengeForm">${teamSelect}<div class="grid two"><div class="field"><label>Challenge name</label><input name="title" required placeholder="e.g. Move Together"></div><div class="field"><label>Measure</label><input name="unit" required placeholder="km, pauses, shares..."></div></div><div class="field"><label>Objective</label><textarea name="description" required placeholder="One sentence. If it cannot be explained in one sentence, simplify it."></textarea></div><div class="grid two"><div class="field"><label>Team target</label><input name="target" type="number" min="0" step="any" required></div><div class="field"><label>Source type</label><select name="source_type"><option value="progress">Normal progress</option><option value="recognition">Recognition count</option><option value="innovation">Innovation count</option><option value="safety">Flight Safety count</option></select></div></div><div class="grid two"><div class="field"><label>Start date</label><input name="start_date" type="date" value="${today()}" required></div><div class="field"><label>End date</label><input name="end_date" type="date" required></div></div><div class="field"><label>Performance Shaping Factors</label><div class="psf-grid">${PSFS.map(x=>`<label class="psf"><input type="checkbox" name="psfs" value="${esc(x)}">${esc(x)}</label>`).join('')}</div></div><button class="btn primary" type="submit">Create challenge</button></form></div></div>`;
 }
 
+function animateHomeMetricNumbers(){
+  if(state.view!=='home' || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+  const values=[...document.querySelectorAll('.grid.four > .metric .value')];
+  const duration=950;
+  values.forEach((el,index)=>{
+    const original=String(el.textContent||'').trim();
+    const slash=original.match(/^([\d,.]+)\s*\/\s*([\d,.]+)$/);
+    const percent=original.match(/^([\d,.]+)%$/);
+    const plain=original.match(/^([\d,.]+)$/);
+    const match=slash||percent||plain;
+    if(!match) return;
+
+    const target=Number(String(match[1]).replace(/,/g,''));
+    if(!Number.isFinite(target)) return;
+
+    const decimalPart=String(match[1]).replace(/,/g,'').split('.')[1]||'';
+    const decimals=Math.min(decimalPart.length,2);
+    const denominator=slash?match[2]:null;
+    const suffix=percent?'%':'';
+    const formatter=new Intl.NumberFormat('en-GB',{
+      minimumFractionDigits:decimals,
+      maximumFractionDigits:decimals
+    });
+
+    el.textContent=slash?`0/${denominator}`:`0${suffix}`;
+    const delay=index*85;
+    const start=performance.now()+delay;
+
+    const tick=now=>{
+      if(now<start){requestAnimationFrame(tick);return;}
+      const t=Math.min((now-start)/duration,1);
+      const eased=1-Math.pow(1-t,3);
+      let current=target*eased;
+      if(decimals===0) current=Math.round(current);
+      const shown=formatter.format(current);
+      el.textContent=slash?`${shown}/${denominator}`:`${shown}${suffix}`;
+      if(t<1) requestAnimationFrame(tick);
+      else el.textContent=original;
+    };
+    requestAnimationFrame(tick);
+  });
+}
+
 function page(){
   const views={home:homeView,challenges:challengesView,log:()=>logView(),progress:progressView,reports:reportsView,contribute:contributeView,rep:repView};
   return `<div class="app-shell">${header()}<main>${state.notice?`<div class="notice ${state.notice.startsWith('Saved')?'success':''}">${esc(state.notice)}</div>`:''}${views[state.view]()}</main>${nav()}</div>`;
@@ -1037,6 +1080,7 @@ function render(extra=''){
   if(!state.data){ document.getElementById('app').innerHTML='<div class="empty">Loading KUDOS…</div>'; return; }
   document.getElementById('app').innerHTML=page()+extra;
   bind();
+  requestAnimationFrame(animateHomeMetricNumbers);
 }
 function showModal(html){render(html)}
 function closeModal(){render()}
