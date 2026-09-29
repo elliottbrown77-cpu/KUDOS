@@ -1,4 +1,4 @@
-const KUDOS_PUSH_VERSION = '2026-09-20.4';
+const KUDOS_PUSH_VERSION = '2026-09-29.1';
 const KUDOS_VAPID_PUBLIC_KEY = 'BO8d__SEQvllT9hy8fO2KRcjG8kbW-Zb52rq8KEUvFIdfzToPEtkJwTJNvBK5ILXxj3vvT2vfKPQtrlEBZACPqE';
 let reminderCardRendering = false;
 
@@ -75,6 +75,41 @@ async function unsubscribe() {
   if (subscription) await subscription.unsubscribe();
   await postSubscription('unsubscribe');
 }
+async function sendTestNotification() {
+  const response = await fetch('/api/push-test', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ deviceId: deviceId() })
+  });
+
+  let payload = {};
+  try { payload = await response.json(); } catch {}
+
+  if (!response.ok) {
+    if (response.status === 410 || payload?.expired) {
+      try {
+        const existing = await currentSubscription();
+        if (existing) await existing.unsubscribe();
+      } catch {}
+      localStorage.setItem('kudos_push_enabled', '0');
+    }
+    throw new Error(payload?.error || `Test notification failed (HTTP ${response.status})`);
+  }
+  return true;
+}
+
+function notificationSupportMessage() {
+  if (!('Notification' in window) || !('PushManager' in window) || !('serviceWorker' in navigator)) {
+    return 'This browser does not support web push notifications.';
+  }
+  if (isIOS() && !isStandalone()) {
+    return 'On iPhone, add KUDOS to your Home Screen and open the installed app before enabling notifications.';
+  }
+  if (Notification.permission === 'denied') {
+    return 'Notifications are blocked for KUDOS in your browser or phone settings. Allow notifications for KUDOS, then return here.';
+  }
+  return '';
+}
 
 
 
@@ -118,9 +153,16 @@ function initialOptInPrompt() {
       await subscribe();
       localStorage.setItem('kudos_push_enabled', '1');
       localStorage.removeItem('kudos_notification_prompt_dismissed');
+      let enabledMessage='Reminders are enabled on this device.';
+      try {
+        await sendTestNotification();
+        enabledMessage='Reminders enabled. A test notification has been sent to confirm this device works.';
+      } catch (testError) {
+        enabledMessage=`Reminders enabled, but the test failed: ${testError?.message || testError}`;
+      }
       prompt.remove();
       document.getElementById('kudos-reminder-card')?.remove();
-      await renderReminderCard('Reminders are enabled on this device.');
+      await renderReminderCard(enabledMessage);
     } catch (error) {
       if (button) {
         button.disabled = false;
@@ -133,14 +175,22 @@ function initialOptInPrompt() {
 }
 
 function notificationCard(enabled, message = '') {
+  const supportMessage = notificationSupportMessage();
+  const detail = message || supportMessage || (enabled
+    ? 'Monday 08:00 and Friday 12:00 reminders are enabled on this device.'
+    : 'Enable reminders for Monday 08:00 and Friday 12:00.');
+  const blocked = Notification.permission === 'denied';
   return `
     <div class="card kudos-reminder-card" id="kudos-reminder-card">
       <div>
         <div class="eyebrow">PROGRESS REMINDERS</div>
         <h3 style="margin:.2rem 0 .35rem">KUDOS notifications</h3>
-        ${message ? `<div class="help" style="margin-top:7px">${message}</div>` : ''}
+        <div class="help" style="margin-top:7px">${detail}</div>
       </div>
-      <button class="btn ${enabled ? 'ghost' : 'navy'}" id="kudos-reminder-toggle">${enabled ? 'Turn off reminders' : 'Enable reminders'}</button>
+      <div class="kudos-reminder-actions">
+        ${enabled ? '<button class="btn ghost" id="kudos-reminder-test">Send test</button>' : ''}
+        <button class="btn ${enabled ? 'ghost' : 'navy'}" id="kudos-reminder-toggle" ${blocked?'disabled':''}>${enabled ? 'Turn off reminders' : blocked ? 'Blocked in settings' : 'Enable reminders'}</button>
+      </div>
     </div>`;
 }
 
@@ -178,6 +228,24 @@ async function renderReminderCard(message = '') {
     hero.insertAdjacentHTML('afterend', notificationCard(false, message));
   }
 
+  document.getElementById('kudos-reminder-test')?.addEventListener('click', async () => {
+    const button = document.getElementById('kudos-reminder-test');
+    if (button) {
+      button.disabled = true;
+      button.textContent = 'Sending…';
+    }
+    try {
+      await sendTestNotification();
+      document.querySelectorAll('#kudos-reminder-card').forEach(card => card.remove());
+      reminderCardRendering = false;
+      await renderReminderCard('Test sent. You should receive a KUDOS notification within a few seconds.');
+    } catch (error) {
+      document.querySelectorAll('#kudos-reminder-card').forEach(card => card.remove());
+      reminderCardRendering = false;
+      await renderReminderCard(error?.message || String(error));
+    }
+  });
+
   document.getElementById('kudos-reminder-toggle')?.addEventListener('click', async () => {
     const button = document.getElementById('kudos-reminder-toggle');
     if (button) button.disabled = true;
@@ -191,9 +259,16 @@ async function renderReminderCard(message = '') {
       } else {
         await subscribe();
         localStorage.setItem('kudos_push_enabled', '1');
+        let enabledMessage='Reminders are enabled on this device.';
+        try {
+          await sendTestNotification();
+          enabledMessage='Reminders enabled. A test notification has been sent to confirm this device works.';
+        } catch (testError) {
+          enabledMessage=`Reminders enabled, but the test failed: ${testError?.message || testError}`;
+        }
         document.querySelectorAll('#kudos-reminder-card').forEach(card => card.remove());
         reminderCardRendering = false;
-        await renderReminderCard('Reminders are enabled on this device.');
+        await renderReminderCard(enabledMessage);
       }
     } catch (error) {
       document.querySelectorAll('#kudos-reminder-card').forEach(card => card.remove());
