@@ -308,18 +308,20 @@ function psfEngagementCard(profileId,teamId){
       <span><strong>${esc(f.name)}</strong><small>${f.engaged?`${f.actionCount} contribution${f.actionCount===1?'':'s'} this week`:'Not tackled this week'}</small>${f.name==='Tooling & Equipment'?'<span class="psf-standard-note">Submitting an idea contributes to this PSF.</span>':''}${f.engaged&&f.sources.length?`<span class="psf-source-list">${f.sources.map(s=>`<span class="psf-source-chip">${esc(s)}</span>`).join('')}</span>`:''}</span>
     </div>`
   ).join('');
-  return `<div class="card psf-engagement-card">
-    <div class="psf-engagement-head">
+  return `<details class="card home-collapsible psf-engagement-card">
+    <summary class="home-collapsible-summary">
       <div>
         <div class="eyebrow">MY PERFORMANCE SHAPING FACTORS</div>
-        <h3>${personal.count}/9 PSFs tackled this week</h3>
-        <p class="help">Weekly coverage resets each Monday. A linked challenge contribution counts toward its PSFs; an Innovation contribution counts toward Tooling &amp; Equipment.</p>
+        <strong>${personal.count}/9 PSFs tackled this week</strong>
       </div>
-      <div class="psf-coverage-dial"><b>${personal.count}</b><span>of 9</span></div>
+      <div class="summary-meta"><span class="summary-count">${personal.count}/9</span><span class="summary-chevron">⌄</span></div>
+    </summary>
+    <div class="home-collapsible-body">
+      <p class="help">Weekly coverage resets each Monday. A linked challenge contribution counts toward its PSFs; an Innovation contribution counts toward Tooling &amp; Equipment.</p>
+      <div class="psf-engagement-grid">${chips}</div>
+      <div class="psf-portfolio-note">This is your <strong>current-week</strong> PSF coverage. Your team's challenge portfolio covers <strong>${portfolio.count}/9 PSFs</strong>; grey factors are opportunities to broaden this week's performance habits.</div>
     </div>
-    <div class="psf-engagement-grid">${chips}</div>
-    <div class="psf-portfolio-note">This is your <strong>current-week</strong> PSF coverage. Your team's challenge portfolio covers <strong>${portfolio.count}/9 PSFs</strong>; grey factors are opportunities to broaden this week's performance habits.</div>
-  </div>`;
+  </details>`;
 }
 
 function ordinal(n){
@@ -482,9 +484,16 @@ function kudosStatusCard(profileId){
       <div><div class="eyebrow">MY KUDOS STATUS</div><h3>${kudosRankTag(profileId)} <span class="rank-position">${ordinal(r.rank)} of ${r.total} • Top ${r.topPercent}%</span></h3></div>
       <div class="status-score"><b>${fmt(r.score)}</b><span>KUDOS</span></div>
     </div>
-    <div class="badge-section-head"><strong>Badges earned</strong><span>${badges.length}</span></div>
-    <div class="achievement-grid">${badges.length?badges.map(badgeHtml).join(''):'<div class="empty compact-empty">Your first badge is one contribution away.</div>'}</div>
-    <div class="next-badge"><div><span>Next badge</span><strong>${esc(next.title)}</strong><small>${esc(next.text)}</small></div>${next.progress?`<b>${esc(next.progress)}</b>`:''}</div>
+    <details class="home-collapsible badges-collapsible">
+      <summary class="home-collapsible-summary">
+        <div><div class="eyebrow">MY KUDOS BADGES</div><strong>${badges.length} badge${badges.length===1?'':'s'} earned</strong></div>
+        <div class="summary-meta"><span class="summary-count">${badges.length}</span><span class="summary-chevron">⌄</span></div>
+      </summary>
+      <div class="home-collapsible-body">
+        <div class="achievement-grid">${badges.length?badges.map(badgeHtml).join(''):'<div class="empty compact-empty">Your first badge is one contribution away.</div>'}</div>
+        <div class="next-badge"><div><span>Next badge</span><strong>${esc(next.title)}</strong><small>${esc(next.text)}</small></div>${next.progress?`<b>${esc(next.progress)}</b>`:''}</div>
+      </div>
+    </details>
   </div>`;
 }
 
