@@ -691,9 +691,33 @@ function allChallengesProgress(cs,profileId){
   return `<div class="section-title"><h2>All challenges</h2><p>Comparable by percentage complete</p></div><div class="grid two">${cs.map(c=>{
     const s=challengeStats(c), mine=personalContribution(profileId,c);return `<div class="card"><div class="challenge-head"><h3>${esc(c.title)}</h3><span class="unit-badge">${pct(s.completion)}</span></div><div class="progress-track" style="margin:14px 0"><div class="progress-fill" style="width:${clamp(s.completion*100,0,100)}%"></div></div><div class="progress-line"><span>Team: <strong>${fmt(s.actual)} / ${fmt(s.target)} ${esc(c.unit)}</strong></span>${state.progressMode==='individual'?`<span>Selected person: <strong>${fmt(mine)}</strong></span>`:''}</div></div>`}).join('')}</div>`;
 }
+function challengeContributorRows(challenge){
+  if(!challenge) return [];
+  const rows=(state.data?.profileTotals||[])
+    .filter(x=>x.challenge_id===challenge.id && Number(x.contribution||0)>0)
+    .map(x=>{
+      const p=profileById(x.profile_id);
+      return {profile_id:x.profile_id,name:p?.name||'Profile',team_id:p?.team_id||challenge.team_id,contribution:Number(x.contribution||0)};
+    })
+    .sort((a,b)=>b.contribution-a.contribution||a.name.localeCompare(b.name));
+  let rank=0,last=null;
+  rows.forEach((r,i)=>{if(last===null||r.contribution!==last) rank=i+1; r.rank=rank; last=r.contribution;});
+  return rows;
+}
 function singleChallengeProgress(c,profileId){
-  if(!c) return '<div class="empty">No challenge selected.</div>'; const s=challengeStats(c), mine=personalContribution(profileId,c);
-  return `<div class="section-title"><h2>${esc(c.title)}</h2><p>${esc(teamName(c.team_id))}</p></div><div class="grid two"><div class="card"><div class="kpi-list"><div class="kpi"><b>${fmt(s.actual)}</b><span>Team progress (${esc(c.unit)})</span></div><div class="kpi"><b>${pct(s.completion)}</b><span>Complete</span></div><div class="kpi"><b>${fmt(s.remaining)}</b><span>Remaining</span></div><div class="kpi"><b>${s.contributors}</b><span>Contributors</span></div></div>${state.progressMode==='individual'?`<div class="notice success" style="margin-top:14px">Selected person contribution: <strong>${fmt(mine)} ${esc(c.unit)}</strong>. The target remains collective.</div>`:''}</div><div class="card"><h3 style="margin-top:0">Progress over time</h3>${svgChart(c,state.progressMode==='individual'?profileId:null)}</div></div>`;
+  if(!c) return '<div class="empty">No challenge selected.</div>';
+  const s=challengeStats(c), mine=personalContribution(profileId,c);
+  const contributors=challengeContributorRows(c);
+  const contributorRows=contributors.map(r=>`<tr class="${r.profile_id===state.profileId?'current-profile-row':''}"><td>${rankPill(r.rank)}</td><td><strong>${esc(r.name)}</strong>${r.profile_id===state.profileId?'<div class="help">You</div>':''}</td><td class="num"><strong>${fmt(r.contribution)}</strong> ${esc(c.unit)}</td></tr>`).join('');
+  return `<div class="section-title"><h2>${esc(c.title)}</h2><p>${esc(teamName(c.team_id))}</p></div>
+  <div class="grid two">
+    <div class="card"><div class="kpi-list"><div class="kpi"><b>${fmt(s.actual)}</b><span>Team progress (${esc(c.unit)})</span></div><div class="kpi"><b>${pct(s.completion)}</b><span>Complete</span></div><div class="kpi"><b>${fmt(s.remaining)}</b><span>Remaining</span></div><div class="kpi"><b>${s.contributors}</b><span>Contributors</span></div></div>${state.progressMode==='individual'?`<div class="notice success" style="margin-top:14px">Selected person contribution: <strong>${fmt(mine)} ${esc(c.unit)}</strong>. The target remains collective.</div>`:''}</div>
+    <div class="card"><h3 style="margin-top:0">Progress over time</h3>${svgChart(c,state.progressMode==='individual'?profileId:null)}</div>
+  </div>
+  <div class="card leaderboard-card" style="margin-top:14px">
+    <div class="challenge-head"><div><h3>Contributor standings</h3><div class="help">All recorded contributions to this challenge</div></div><span class="unit-badge">${contributors.length} contributors</span></div>
+    ${contributors.length?`<div class="mini-table contributor-scroll"><table><thead><tr><th>Rank</th><th>Individual</th><th>Contribution</th></tr></thead><tbody>${contributorRows}</tbody></table></div>`:'<div class="empty compact-empty">No contributions recorded yet.</div>'}
+  </div>`;
 }
 
 
@@ -804,9 +828,9 @@ function reportsView(){
   const challengeCards=challengeRows.map(r=>`<div class="card team-rank-card ${r.rank===1?'leader-card':''}"><div class="team-rank-head"><div>${rankPill(r.rank)}<strong>${esc(r.name)}</strong></div><span>${r.has?pct(r.completion):'Not set'}</span></div>${r.has?`${reportProgressBar(r.completion)}<div class="progress-line"><span><strong>${fmt(r.actual)}</strong> / ${fmt(r.target)} ${esc(selected.unit)}</span><span>${r.contributors} contributor${r.contributors===1?'':'s'}</span></div>`:`<div class="help">This team does not currently have a matching challenge.</div>`}</div>`).join('');
 
   const topByChallenge=groups.map(g=>{
-    const top=groupTopIndividuals(g,5);
-    const rows=top.map((r,i)=>`<tr><td>${rankPill(i+1)}</td><td><strong>${esc(r.name)}</strong><div class="help">${esc(r.team)}</div></td><td class="num"><strong>${fmt(r.contribution)}</strong> ${esc(g.unit)}</td></tr>`).join('');
-    return `<div class="card leaderboard-card"><div class="challenge-head"><div><h3>${esc(g.title)}</h3><div class="help">${esc(g.unit)} • ${g.challenges.length} team challenge${g.challenges.length===1?'':'s'}</div></div><span class="unit-badge">Top 5</span></div>${top.length?`<div class="mini-table"><table><thead><tr><th>Rank</th><th>Individual</th><th>Contribution</th></tr></thead><tbody>${rows}</tbody></table></div>`:'<div class="empty compact-empty">No contributions yet.</div>'}</div>`;
+    const top=groupTopIndividuals(g,9999);
+    const rows=top.map((r,i)=>`<tr class="${r.profile_id===state.profileId?'current-profile-row':''}"><td>${rankPill(i+1)}</td><td><strong>${esc(r.name)}</strong><div class="help">${esc(r.team)}${r.profile_id===state.profileId?' • You':''}</div></td><td class="num"><strong>${fmt(r.contribution)}</strong> ${esc(g.unit)}</td></tr>`).join('');
+    return `<div class="card leaderboard-card"><div class="challenge-head"><div><h3>${esc(g.title)}</h3><div class="help">${esc(g.unit)} • ${g.challenges.length} team challenge${g.challenges.length===1?'':'s'}</div></div><span class="unit-badge">${top.length} contributors</span></div>${top.length?`<div class="mini-table contributor-scroll"><table><thead><tr><th>Rank</th><th>Individual</th><th>Contribution</th></tr></thead><tbody>${rows}</tbody></table></div>`:'<div class="empty compact-empty">No contributions yet.</div>'}</div>`;
   }).join('');
 
   const topOverallRows=topOverall.map((r,i)=>`<tr><td>${rankPill(i+1)}</td><td><strong>${esc(r.name)}</strong><div class="help">${esc(r.team)}</div></td><td>${kudosRankTag(r.profile_id,true)}</td><td class="num"><strong>${fmt(r.score)}</strong></td></tr>`).join('');
@@ -824,7 +848,7 @@ function reportsView(){
   <div class="card"><div class="field" style="margin-bottom:0"><label>Challenge</label><select id="reportChallenge">${groupOptions}</select></div></div>
   ${selected?`<div class="section-title"><h2>${esc(selected.title)}</h2><p>${esc(selected.unit)} • ranked by percentage complete</p></div><div class="grid four report-team-grid">${challengeCards}</div>`:'<div class="empty">No active challenges yet.</div>'}
 
-  <div class="section-title"><h2>Top 5 individuals by challenge</h2><p>Largest contribution to each team target</p></div>
+  <div class="section-title"><h2>Individual challenge leaderboards</h2><p>All contributors ranked by recorded contribution</p></div>
   <div class="grid two">${topByChallenge||'<div class="empty">No challenge contribution data yet.</div>'}</div>
 
   <div class="section-title"><h2>Top 5 overall KUDOS scores</h2><p>Across challenge activity, recognition, innovation and safety contributions</p></div>
@@ -1025,7 +1049,13 @@ async function submitProgress(fd){
     }
     throw error;
   }
-  state.notice='Saved. Your contribution has been added to the team total.'; await refresh();
+  state.notice='Saved. Your contribution has been added to the team total.';
+  state.view='progress';
+  state.progressMode='individual';
+  state.profileFilter=record.profile_id;
+  state.teamFilter=p.team_id;
+  state.challengeFilter=record.challenge_id;
+  await refresh();
 }
 
 async function postDetectedNetlifyForm(formName, values){
