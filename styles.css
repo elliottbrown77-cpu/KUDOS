@@ -249,3 +249,15 @@ main{max-width:1120px;margin:0 auto;padding:18px 16px 40px}
 .psf-metric-details{grid-column:1/-1;padding:0 18px 18px;border-top:1px solid var(--line,#dde2df)}
 .psf-metric-dropdown[open]{grid-column:1/-1}
 .psf-metric-dropdown[open] .psf-metric-summary{padding-bottom:14px}
+
+
+/* Ensure expanded PSF dropdown is readable on the navy metric card */
+.psf-metric-details{background:#fff;color:var(--ink,#24323a)}
+.psf-metric-details .help,
+.psf-metric-details .psf-portfolio-note,
+.psf-metric-details .psf-engagement-item small{color:var(--muted,#67747d)}
+.psf-metric-details .psf-engagement-item strong,
+.psf-metric-details .psf-standard-note,
+.psf-metric-details .psf-source-chip{color:var(--navy,#0C2338)}
+.psf-metric-details .psf-engagement-item.not-engaged{color:#5f6d75}
+.psf-metric-details .psf-state{color:var(--navy,#0C2338)}
