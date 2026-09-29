@@ -472,15 +472,39 @@ function nextBadgeGoal(profileId){
   if(streak<8) return {title:'Consistency · Gold',progress:`${streak} / 8 weeks`,text:'Build an 8-week contribution streak.'};
   return {title:'Keep the momentum',progress:'',text:'Keep contributing and look out for weekly achievement badges.'};
 }
-function badgeHtml(b){
-  return `<div class="achievement-badge ${b.kind==='weekly'?'weekly-badge':''}"><span class="badge-icon">${esc(b.icon)}</span><span><strong>${esc(b.title)}</strong><small>${esc(b.description)}</small></span></div>`;
+function badgeIdentity(b){
+  return b.kind==='weekly' ? `weekly:${weekStartISO()}:${b.title}` : `permanent:${b.title}`;
+}
+function detectNewBadges(profileId,badges){
+  if(!profileId) return [];
+  const key=`kudos_seen_badges_${profileId}`;
+  const current=badges.map(badgeIdentity);
+  try{
+    const raw=localStorage.getItem(key);
+    if(raw===null){
+      localStorage.setItem(key,JSON.stringify(current));
+      return [];
+    }
+    const seen=new Set(JSON.parse(raw)||[]);
+    const fresh=badges.filter(b=>!seen.has(badgeIdentity(b)));
+    const merged=[...new Set([...seen,...current])];
+    localStorage.setItem(key,JSON.stringify(merged));
+    return fresh;
+  }catch{
+    return [];
+  }
+}
+function badgeHtml(b,isNew=false){
+  return `<div class="achievement-badge ${b.kind==='weekly'?'weekly-badge':''} ${isNew?'newly-earned-badge':''}"><span class="badge-icon">${esc(b.icon)}</span><span><strong>${esc(b.title)}${isNew?' <em class="new-badge-mini">NEW</em>':''}</strong><small>${esc(b.description)}</small></span></div>`;
 }
 function kudosStatusCard(profileId){
   if(!profileId) return '';
   const r=kudosRanking(profileId);
   const badges=earnedBadges(profileId);
+  const newBadges=detectNewBadges(profileId,badges);
+  const newTitles=new Set(newBadges.map(b=>b.title));
   const next=nextBadgeGoal(profileId);
-  return `<details class="card metric kudos-metric-dropdown">
+  return `<details class="card metric kudos-metric-dropdown ${newBadges.length?'new-badge-alert':''}">
     <summary class="kudos-metric-summary">
       <div>
         <div class="label">My KUDOS score</div>
@@ -488,6 +512,7 @@ function kudosStatusCard(profileId){
         <div class="metric-rank">${kudosRankTag(profileId,true)}</div>
         <div class="sub">Challenge score from % of target + 20 KUDOS contributions</div>
       </div>
+      ${newBadges.length?`<span class="new-badge-callout">NEW BADGE${newBadges.length>1?'S':''}</span>`:''}
       <span class="summary-chevron">⌄</span>
     </summary>
     <div class="kudos-metric-details">
@@ -499,8 +524,9 @@ function kudosStatusCard(profileId){
         </div>
         <div class="status-score"><b>${fmt(r.score)}</b><span>KUDOS</span></div>
       </div>
+      ${newBadges.length?`<div class="badge-celebration"><strong>Badge achieved!</strong><span>${newBadges.map(b=>esc(b.title)).join(' • ')}</span></div>`:''}
       <div class="badge-section-head"><strong>My KUDOS badges</strong><span>${badges.length}</span></div>
-      <div class="achievement-grid">${badges.length?badges.map(badgeHtml).join(''):'<div class="empty compact-empty">Your first badge is one contribution away.</div>'}</div>
+      <div class="achievement-grid">${badges.length?badges.map(b=>badgeHtml(b,newTitles.has(b.title))).join(''):'<div class="empty compact-empty">Your first badge is one contribution away.</div>'}</div>
       <div class="next-badge"><div><span>Next badge</span><strong>${esc(next.title)}</strong><small>${esc(next.text)}</small></div>${next.progress?`<b>${esc(next.progress)}</b>`:''}</div>
     </div>
   </details>`;
