@@ -75,7 +75,8 @@ async function loadSupabase(){
     supabase.from('psfs').select('*').order('display_order'),
     supabase.from('challenge_psfs').select('*'),
     supabase.from('challenge_progress').select('*'),
-    supabase.from('profile_challenge_totals').select('*'),
+    // The view contains one row for every active profile × active challenge. Loading all rows can exceed Supabase's API row cap and silently truncate real contributions. Zero rows are equivalent to no contribution in the UI, so only fetch recorded contributions.
+    supabase.from('profile_challenge_totals').select('*').gt('contribution',0).order('challenge_id').order('profile_id'),
     supabase.from('profile_scores').select('*'),
     supabase.from('team_scores').select('*'),
     supabase.from('progress_history').select('*').order('entry_date'),
