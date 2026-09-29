@@ -282,3 +282,73 @@ main{max-width:1120px;margin:0 auto;padding:18px 16px 40px}
 .kudos-metric-details .next-badge strong{color:var(--navy,#0C2338)}
 .kudos-metric-details .achievement-badge small,
 .kudos-metric-details .next-badge small{color:var(--muted,#67747d)}
+
+
+/* Make the two metric dropdown affordances unmistakable */
+.psf-metric-summary,
+.kudos-metric-summary{
+  position:relative;
+  padding-right:54px;
+}
+.psf-metric-summary::after,
+.kudos-metric-summary::after{
+  content:'OPEN';
+  position:absolute;
+  top:14px;
+  right:14px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-width:34px;
+  height:22px;
+  padding:0 7px;
+  border-radius:999px;
+  background:rgba(255,255,255,.16);
+  border:1px solid rgba(255,255,255,.42);
+  color:#fff;
+  font-size:8px;
+  line-height:1;
+  font-weight:900;
+  letter-spacing:.09em;
+}
+.psf-metric-summary .summary-chevron,
+.kudos-metric-summary .summary-chevron{
+  position:absolute;
+  right:19px;
+  bottom:14px;
+  width:26px;
+  height:26px;
+  display:grid;
+  place-items:center;
+  border-radius:50%;
+  background:#fff;
+  color:var(--navy,#0C2338);
+  font-size:20px;
+  font-weight:900;
+  box-shadow:0 2px 8px rgba(0,0,0,.18);
+}
+.psf-metric-dropdown[open] .psf-metric-summary::after,
+.kudos-metric-dropdown[open] .kudos-metric-summary::after{
+  content:'CLOSE';
+}
+.psf-metric-dropdown[open] .summary-chevron,
+.kudos-metric-dropdown[open] .summary-chevron{
+  transform:rotate(180deg);
+}
+.psf-metric-summary:hover,
+.kudos-metric-summary:hover{
+  background:rgba(255,255,255,.04);
+}
+.psf-metric-summary:focus-visible,
+.kudos-metric-summary:focus-visible{
+  outline:3px solid rgba(255,255,255,.75);
+  outline-offset:-4px;
+}
+@media(max-width:560px){
+  .psf-metric-summary,
+  .kudos-metric-summary{padding-right:50px}
+  .psf-metric-summary::after,
+  .kudos-metric-summary::after{top:12px;right:12px}
+  .psf-metric-summary .summary-chevron,
+  .kudos-metric-summary .summary-chevron{right:16px;bottom:12px}
+}
