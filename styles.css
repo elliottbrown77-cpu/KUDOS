@@ -238,3 +238,14 @@ main{max-width:1120px;margin:0 auto;padding:18px 16px 40px}
   .home-collapsible-summary{padding:14px}
   .home-collapsible-body{padding:0 14px 14px}
 }
+
+
+/* PSF metric card doubles as the dropdown trigger */
+.psf-metric-dropdown{padding:0;overflow:hidden}
+.psf-metric-summary{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;padding:18px;cursor:pointer;list-style:none}
+.psf-metric-summary::-webkit-details-marker{display:none}
+.psf-metric-summary>div{min-width:0}
+.psf-metric-summary .summary-chevron{margin-top:2px}
+.psf-metric-details{grid-column:1/-1;padding:0 18px 18px;border-top:1px solid var(--line,#dde2df)}
+.psf-metric-dropdown[open]{grid-column:1/-1}
+.psf-metric-dropdown[open] .psf-metric-summary{padding-bottom:14px}
