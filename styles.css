@@ -261,3 +261,24 @@ main{max-width:1120px;margin:0 auto;padding:18px 16px 40px}
 .psf-metric-details .psf-source-chip{color:var(--navy,#0C2338)}
 .psf-metric-details .psf-engagement-item.not-engaged{color:#5f6d75}
 .psf-metric-details .psf-state{color:var(--navy,#0C2338)}
+
+
+/* KUDOS score metric doubles as the status/badges dropdown trigger */
+.kudos-metric-dropdown{padding:0;overflow:hidden}
+.kudos-metric-summary{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;padding:18px;cursor:pointer;list-style:none}
+.kudos-metric-summary::-webkit-details-marker{display:none}
+.kudos-metric-summary>div{min-width:0}
+.kudos-metric-summary .summary-chevron{margin-top:2px}
+.kudos-metric-details{grid-column:1/-1;padding:16px 18px 18px;border-top:1px solid var(--line,#dde2df);background:#fff;color:var(--ink,#24323a)}
+.kudos-metric-dropdown[open]{grid-column:1/-1}
+.kudos-metric-dropdown[open] .kudos-metric-summary{padding-bottom:14px}
+.kudos-detail-head{display:flex;align-items:flex-start;justify-content:space-between;gap:18px}
+.kudos-detail-head>div:first-child>strong{display:block;margin-top:4px;font-size:15px;color:var(--navy,#0C2338)}
+.kudos-detail-head>div:first-child>span{display:block;margin-top:3px;font-size:11px;color:var(--muted,#67747d)}
+.kudos-metric-details .badge-section-head{margin-top:16px}
+.kudos-metric-details .achievement-badge,
+.kudos-metric-details .next-badge{color:var(--ink,#24323a)}
+.kudos-metric-details .achievement-badge strong,
+.kudos-metric-details .next-badge strong{color:var(--navy,#0C2338)}
+.kudos-metric-details .achievement-badge small,
+.kudos-metric-details .next-badge small{color:var(--muted,#67747d)}
