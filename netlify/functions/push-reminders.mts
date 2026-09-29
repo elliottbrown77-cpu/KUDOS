@@ -88,7 +88,10 @@ export default async () => {
       const row = await subscriptions.get(key, { type: "json" }) as StoredSubscription | null;
       if (!row?.subscription) return;
       try {
-        await webpush.sendNotification(row.subscription as any, payload, { TTL: 60 * 60 * 6 });
+        await webpush.sendNotification(row.subscription as any, payload, {
+          TTL: 60 * 60 * 12,
+          urgency: "high"
+        });
         sent += 1;
       } catch (error: any) {
         if (error?.statusCode === 404 || error?.statusCode === 410) {
@@ -116,7 +119,7 @@ export default async () => {
     failed
   });
 
-  console.log("KUDOS reminder complete", { slot, reminderType, sent, removed, failed });
+  console.log("KUDOS reminder complete", { slot, reminderType, visibleSubscriptions: blobs.length, sent, removed, failed });
 };
 
 export const config = { schedule: "0 * * * *" };
