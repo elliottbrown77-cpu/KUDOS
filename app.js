@@ -308,18 +308,19 @@ function psfEngagementCard(profileId,teamId){
       <span><strong>${esc(f.name)}</strong><small>${f.engaged?`${f.actionCount} contribution${f.actionCount===1?'':'s'} this week`:'Not tackled this week'}</small>${f.name==='Tooling & Equipment'?'<span class="psf-standard-note">Submitting an idea contributes to this PSF.</span>':''}${f.engaged&&f.sources.length?`<span class="psf-source-list">${f.sources.map(s=>`<span class="psf-source-chip">${esc(s)}</span>`).join('')}</span>`:''}</span>
     </div>`
   ).join('');
-  return `<details class="card home-collapsible psf-engagement-card">
-    <summary class="home-collapsible-summary">
+  return `<details class="card metric psf-metric-dropdown">
+    <summary class="psf-metric-summary">
       <div>
-        <div class="eyebrow">MY PERFORMANCE SHAPING FACTORS</div>
-        <strong>${personal.count}/9 PSFs tackled this week</strong>
+        <div class="label">My PSFs this week</div>
+        <div class="value">${personal.count}/9</div>
+        <div class="sub">Performance Shaping Factors tackled since Monday</div>
       </div>
-      <div class="summary-meta"><span class="summary-count">${personal.count}/9</span><span class="summary-chevron">⌄</span></div>
+      <span class="summary-chevron">⌄</span>
     </summary>
-    <div class="home-collapsible-body">
+    <div class="psf-metric-details">
       <p class="help">Weekly coverage resets each Monday. A linked challenge contribution counts toward its PSFs; an Innovation contribution counts toward Tooling &amp; Equipment.</p>
       <div class="psf-engagement-grid">${chips}</div>
-      <div class="psf-portfolio-note">This is your <strong>current-week</strong> PSF coverage. Your team's challenge portfolio covers <strong>${portfolio.count}/9 PSFs</strong>; grey factors are opportunities to broaden this week's performance habits.</div>
+      <div class="psf-portfolio-note">Your team's current challenge portfolio covers <strong>${portfolio.count}/9 PSFs</strong>. Grey factors are opportunities to broaden this week's performance habits.</div>
     </div>
   </details>`;
 }
@@ -561,8 +562,7 @@ function homeView(){
   <div class="grid four"><div class="card metric"><div class="label">My KUDOS score</div><div class="value">${fmt(profileScore(p?.id))}</div><div class="metric-rank">${kudosRankTag(p?.id,true)}</div><div class="sub">Challenge score from % of target + 20 KUDOS contributions</div></div>
   <div class="card metric"><div class="label">Team KUDOS score</div><div class="value">${fmt(teamScore(team))}</div><div class="sub">Combined individual contribution</div></div>
   <div class="card metric"><div class="label">Challenge completion</div><div class="value">${pct(avg)}</div><div class="sub">Average capped at 100% per challenge</div></div>
-  <div class="card metric"><div class="label">My PSFs this week</div><div class="value">${individualPsfEngagement(p?.id).count}/9</div><div class="sub">Performance Shaping Factors tackled since Monday</div></div></div>
-  ${psfEngagementCard(p?.id,team)}
+  ${psfEngagementCard(p?.id,team)}</div>
   ${kudosStatusCard(p?.id)}
   <div class="section-title contribution-title"><h2>Make a contribution</h2><p>Safety • Recognition • Innovation</p></div>
   <div class="card scoring-explainer"><strong>How KUDOS scoring works</strong><div class="help">Challenge progress still tracks the real measure, such as kg or km. Your KUDOS score comes from the share of the team target you contribute: <strong>1% of target = 10 KUDOS</strong>, up to a maximum of <strong>100 KUDOS per person per challenge</strong>. Each <strong>Recognition</strong>, <strong>Innovation</strong> and <strong>Flight Safety</strong> submission is worth <strong>20 KUDOS</strong>.</div></div>
