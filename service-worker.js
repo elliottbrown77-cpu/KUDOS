@@ -1,4 +1,4 @@
-const CACHE = 'kudos-v14-push-reminders';
+const CACHE = 'kudos-v15-push-diagnostics';
 const STATIC_ASSETS = [
   './hero-merlin.png',
   './chf-crest.png',
@@ -42,6 +42,8 @@ self.addEventListener('fetch', event => {
     path.endsWith('/app.js') ||
     path.endsWith('/styles.css') ||
     path.endsWith('/config.js') ||
+    path.endsWith('/push-notifications.js') ||
+    path.endsWith('/service-worker.js') ||
     path.endsWith('/manifest.webmanifest');
 
   if (isAppCode) {
