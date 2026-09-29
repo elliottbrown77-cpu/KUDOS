@@ -49,8 +49,8 @@ export default async (req: Request) => {
   webpush.setVapidDetails(subject, publicKey, privateKey);
 
   const payload = JSON.stringify({
-    title: "KUDOS notifications working",
-    body: "Test successful — this device can receive KUDOS reminders.",
+    title: "KUDOS push test",
+    body: "Remote push delivery is working on this device.",
     icon: "/kudos-app-192-v2.png",
     badge: "/kudos-app-192-v2.png",
     tag: `kudos-test-${Date.now()}`,
@@ -62,7 +62,7 @@ export default async (req: Request) => {
       TTL: 300,
       urgency: "high"
     });
-    return Response.json({ ok: true, delivered: true });
+    return Response.json({ ok: true, accepted: true, message: "Push provider accepted the notification for delivery" });
   } catch (error: any) {
     if (error?.statusCode === 404 || error?.statusCode === 410) {
       await subscriptions.delete(key);
