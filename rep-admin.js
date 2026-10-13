@@ -56,8 +56,8 @@ if (!READY) {
       if (workspaceAdmin) appUser = { auth_user_id:user.id, role:'admin', team_id:null, platform_role:'workspace_admin', workspace_id:workspaceAdmin.workspace_id };
       else if (orgAdmin) appUser = { auth_user_id:user.id, role:'org_admin', team_id:null, platform_role:'organisation_admin', organisation_id:orgAdmin.organisation_id, workspace_id:orgAdmin.workspace_id };
       else if (scopedRep) appUser = { auth_user_id:user.id, role:'rep', team_id:scopedRep.team_id, platform_role:'team_rep', workspace_id:scopedRep.workspace_id };
-      else if (viewer) appUser = { auth_user_id:user.id, role:'viewer', team_id:null, platform_role:'report_viewer', organisation_id:viewer.organisation_id, workspace_id:viewer.workspace_id };
       else if (managerAccess.length) appUser = { auth_user_id:user.id, role:'manager', team_id:null, platform_role:'contribution_manager', manager_types:managerTypes, workspace_id:managerAccess[0].workspace_id };
+      else if (viewer) appUser = { auth_user_id:user.id, role:'viewer', team_id:null, platform_role:'report_viewer', organisation_id:viewer.organisation_id, workspace_id:viewer.workspace_id };
     }
 
     const isWorkspaceAdmin = legacy?.role === 'admin' || Boolean(workspaceAdmin);
