@@ -780,13 +780,14 @@ if (!READY) {
   }
 
   async function loadGlobalContributionData() {
-    const [profilesRes, safetyRes, innovationRes, rewardsRes] = await Promise.all([
+    const [profilesRes, safetyRes, innovationRes, rewardsRes, followupsRes] = await Promise.all([
       db.from('profiles').select('id,name,team_id').eq('active', true).order('name'),
       db.from('safety_entries').select('*').order('created_at', {ascending:false}),
       db.from('innovation_entries').select('*').order('created_at', {ascending:false}),
-      db.from('recognition_entries').select('*').order('created_at', {ascending:false})
+      db.from('recognition_entries').select('*').order('created_at', {ascending:false}),
+      db.from('contribution_followups').select('*').order('entry_date', {ascending:false}).order('created_at', {ascending:false})
     ]);
-    const err = [profilesRes, safetyRes, innovationRes, rewardsRes].find(r => r.error)?.error;
+    const err = [profilesRes, safetyRes, innovationRes, rewardsRes, followupsRes].find(r => r.error)?.error;
     if (err) throw err;
     return {
       profiles: profilesRes.data || [],
@@ -794,7 +795,8 @@ if (!READY) {
         safety: safetyRes.data || [],
         innovation: innovationRes.data || [],
         recognition: rewardsRes.data || []
-      }
+      },
+      followups: followupsRes.data || []
     };
   }
 
@@ -2071,7 +2073,7 @@ if (!READY) {
           ${renderTeamNamesSection(teams, ctx, teamId, isGlobalAdmin)}
           ${renderChallengeSection(data, mode === 'admin', isGlobalAdmin)}
           ${renderEntrySection(moderationData, teams, isGlobalAdmin)}
-          ${renderContributionQueues(contributionData, teams, isGlobalAdmin)}
+          ${isGlobalAdmin ? renderContributionManagerWorkspace(contributionData, teams, ['safety','innovation','recognition'], true) : renderContributionQueues(contributionData, teams, false)}
           ${renderPointsSection(data, mode === 'admin')}
           ${mode === 'admin' ? renderProfileManagementSection(globalProfileData || data, teams, isGlobalAdmin) : ''}
           ${adminData ? renderAccessAdminSection(ctx, teams, adminData, platformData) : ''}
