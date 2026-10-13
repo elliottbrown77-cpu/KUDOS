@@ -149,10 +149,13 @@ async function loadAdminSession(){
       const orgAdmin=state.workspaceAccess.find(a=>a.role==='organisation_admin');
       const teamRep=state.workspaceAccess.find(a=>a.role==='team_rep');
       const viewer=state.workspaceAccess.find(a=>a.role==='report_viewer');
+      const managerAccess=state.workspaceAccess.filter(a=>['safety_manager','innovation_manager','recognition_manager'].includes(a.role));
+      const managerTypes=managerAccess.map(a=>a.role.replace('_manager',''));
       if(workspaceAdmin) state.appUser={auth_user_id:state.authUser.id,role:'admin',team_id:null,platform_role:'workspace_admin',workspace_id:workspaceAdmin.workspace_id};
       else if(orgAdmin) state.appUser={auth_user_id:state.authUser.id,role:'org_admin',team_id:null,platform_role:'organisation_admin',organisation_id:orgAdmin.organisation_id,workspace_id:orgAdmin.workspace_id};
       else if(teamRep) state.appUser={auth_user_id:state.authUser.id,role:'rep',team_id:teamRep.team_id,platform_role:'team_rep',workspace_id:teamRep.workspace_id};
       else if(viewer) state.appUser={auth_user_id:state.authUser.id,role:'viewer',team_id:null,platform_role:'report_viewer',organisation_id:viewer.organisation_id,workspace_id:viewer.workspace_id};
+      else if(managerAccess.length) state.appUser={auth_user_id:state.authUser.id,role:'manager',team_id:null,platform_role:'contribution_manager',manager_types:managerTypes,workspace_id:managerAccess[0].workspace_id};
     }
   }
 }
@@ -161,6 +164,18 @@ function isFullAdmin(){ return state.appUser?.role==='admin'; }
 function adminTeamId(){
   if(state.appUser?.role==='rep') return state.appUser.team_id;
   return state.teamFilter || currentProfile()?.team_id || state.data?.teams?.[0]?.id || '';
+}
+
+
+async function loadContributorFollowups(profileId){
+  if(state.mode!=='supabase' || !profileId) return [];
+  const {data,error}=await supabase.from('contribution_followups')
+    .select('contribution_type,contribution_id,contribution_label,entry_date,status,manager_update,manager_updated_at')
+    .eq('contributor_profile_id',profileId)
+    .order('entry_date',{ascending:false})
+    .order('created_at',{ascending:false});
+  if(error) throw error;
+  return data||[];
 }
 
 async function refresh(){
@@ -185,6 +200,7 @@ async function refresh(){
       if(!state.teamFilter) state.teamFilter=state.data.teams[0]?.id || '';
     }
 
+    state.data.contributionFollowups = state.profileId ? await loadContributorFollowups(state.profileId) : [];
     render();
 
     // First use on a browser/device: require an explicit profile choice or profile creation.
@@ -899,9 +915,38 @@ function reportsView(){
   <div class="notice" style="margin-top:14px">Challenge team comparisons currently group challenges when the <strong>challenge name, unit and contribution type match</strong>. If teams use different names for the same intended challenge, they will appear as separate challenge groups.</div>`;
 }
 
+
+function contributionStatusLabel(status){
+  return ({
+    submitted:'Submitted',
+    under_review:'Under review',
+    actioning:'Actioning',
+    resolved:'Resolved',
+    closed:'Closed'
+  })[status] || 'Submitted';
+}
+function myContributionUpdates(){
+  const rows=[...(state.data?.contributionFollowups||[])];
+  const typeLabel=t=>t==='safety'?'Flight Safety':t==='innovation'?'Innovation':'Recognition';
+  const cards=rows.map(x=>`
+    <div class="card">
+      <div class="challenge-head">
+        <div><div class="eyebrow">${esc(typeLabel(x.contribution_type).toUpperCase())}</div><h3 style="margin:.25rem 0 0">${esc(x.contribution_label||typeLabel(x.contribution_type))}</h3></div>
+        <span class="unit-badge">${esc(contributionStatusLabel(x.status))}</span>
+      </div>
+      <div class="help" style="margin-top:8px">Submitted ${esc(x.entry_date||'')}</div>
+      ${x.manager_update
+        ? `<div class="notice success" style="margin-top:12px"><strong>Manager update</strong><div style="margin-top:6px;white-space:pre-wrap">${esc(x.manager_update)}</div>${x.manager_updated_at?`<div class="help" style="margin-top:7px">Updated ${esc(String(x.manager_updated_at).replace('T',' ').slice(0,16))}</div>`:''}</div>`
+        : '<div class="notice" style="margin-top:12px">No manager update has been added yet.</div>'}
+    </div>`).join('');
+  return `<div class="section-title"><h2>My contributions &amp; updates</h2><p>Follow-up from Safety, Innovation and Recognition managers</p></div>
+    <div class="grid two">${cards||'<div class="empty">You have no Safety, Innovation or Recognition contributions recorded yet.</div>'}</div>`;
+}
+
 function contributeView(){
   return `<div class="section-title"><h2>Contribute</h2><p>Safety, recognition and innovation</p></div>${contributionQuickActions(false)}
-  <div class="notice" style="margin-top:14px">Every submission records the selected KUDOS profile as the creator and is also sent through the site notification form for administrator email notification. Recognition, Innovation and Flight Safety are each worth 20 KUDOS.</div>`;
+  <div class="notice" style="margin-top:14px">Every submission records the selected KUDOS profile as the creator and is also sent through the site notification form for administrator email notification. Recognition, Innovation and Flight Safety are each worth 20 KUDOS.</div>
+  ${myContributionUpdates()}`;
 }
 
 
