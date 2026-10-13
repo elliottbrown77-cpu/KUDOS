@@ -154,8 +154,8 @@ async function loadAdminSession(){
       if(workspaceAdmin) state.appUser={auth_user_id:state.authUser.id,role:'admin',team_id:null,platform_role:'workspace_admin',workspace_id:workspaceAdmin.workspace_id};
       else if(orgAdmin) state.appUser={auth_user_id:state.authUser.id,role:'org_admin',team_id:null,platform_role:'organisation_admin',organisation_id:orgAdmin.organisation_id,workspace_id:orgAdmin.workspace_id};
       else if(teamRep) state.appUser={auth_user_id:state.authUser.id,role:'rep',team_id:teamRep.team_id,platform_role:'team_rep',workspace_id:teamRep.workspace_id};
-      else if(viewer) state.appUser={auth_user_id:state.authUser.id,role:'viewer',team_id:null,platform_role:'report_viewer',organisation_id:viewer.organisation_id,workspace_id:viewer.workspace_id};
       else if(managerAccess.length) state.appUser={auth_user_id:state.authUser.id,role:'manager',team_id:null,platform_role:'contribution_manager',manager_types:managerTypes,workspace_id:managerAccess[0].workspace_id};
+      else if(viewer) state.appUser={auth_user_id:state.authUser.id,role:'viewer',team_id:null,platform_role:'report_viewer',organisation_id:viewer.organisation_id,workspace_id:viewer.workspace_id};
     }
   }
 }
