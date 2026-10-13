@@ -1,4 +1,4 @@
-const KUDOS_REP_TOOLS_VERSION = '2026-09-21.6';
+const KUDOS_REP_TOOLS_VERSION = '2026-10-13.1';
 
 const CFG = window.KUDOS_CONFIG || {};
 const SUPABASE_KEY = CFG.SUPABASE_PUBLISHABLE_KEY || CFG.SUPABASE_ANON_KEY || '';
@@ -48,6 +48,8 @@ if (!READY) {
     const orgAdmin = access.find(a => a.role === 'organisation_admin');
     const scopedRep = access.find(a => a.role === 'team_rep');
     const viewer = access.find(a => a.role === 'report_viewer');
+    const managerAccess = access.filter(a => ['safety_manager','innovation_manager','recognition_manager'].includes(a.role));
+    const managerTypes = managerAccess.map(a => a.role.replace('_manager',''));
 
     let appUser = legacy;
     if (!appUser) {
@@ -55,6 +57,7 @@ if (!READY) {
       else if (orgAdmin) appUser = { auth_user_id:user.id, role:'org_admin', team_id:null, platform_role:'organisation_admin', organisation_id:orgAdmin.organisation_id, workspace_id:orgAdmin.workspace_id };
       else if (scopedRep) appUser = { auth_user_id:user.id, role:'rep', team_id:scopedRep.team_id, platform_role:'team_rep', workspace_id:scopedRep.workspace_id };
       else if (viewer) appUser = { auth_user_id:user.id, role:'viewer', team_id:null, platform_role:'report_viewer', organisation_id:viewer.organisation_id, workspace_id:viewer.workspace_id };
+      else if (managerAccess.length) appUser = { auth_user_id:user.id, role:'manager', team_id:null, platform_role:'contribution_manager', manager_types:managerTypes, workspace_id:managerAccess[0].workspace_id };
     }
 
     const isWorkspaceAdmin = legacy?.role === 'admin' || Boolean(workspaceAdmin);
@@ -80,6 +83,7 @@ if (!READY) {
   }
 
   function getActingMode(ctx) {
+    if (ctx.appUser?.role === 'manager') return 'manager';
     const stored = localStorage.getItem('kudos_acting_mode') || '';
     if (['admin','org_admin'].includes(ctx.appUser?.role)) {
       return ['individual','rep','admin'].includes(stored) ? stored : 'admin';
@@ -128,10 +132,25 @@ if (!READY) {
   function modeLabel(mode) {
     if (mode === 'admin') return 'Administrator';
     if (mode === 'rep') return 'Performance Rep';
+    if (mode === 'manager') return 'Contribution Manager';
     return 'Individual';
   }
 
   function actingModeBar(ctx, profile, teams, mode, repTeamId) {
+    if (mode === 'manager') {
+      const labels = (ctx.appUser?.manager_types || []).map(x => x === 'safety' ? 'Safety' : x === 'innovation' ? 'Innovation' : 'Recognition');
+      return `
+        <div class="card acting-shell">
+          <div class="acting-head">
+            <div>
+              <h2 style="margin:0">Acting as: Contribution Manager</h2>
+              <div class="acting-context">${esc(labels.join(' • ') || 'Contribution')} management • all CHF teams</div>
+            </div>
+            <div class="mode-actions"><button class="btn ghost" data-kudos-signout>Sign out</button></div>
+          </div>
+        </div>
+      `;
+    }
     const repTeam = teams.find(t => t.id === repTeamId);
     const buttons = [
       `<button class="btn ${mode==='individual'?'primary':'ghost'} acting-mode-btn" data-kudos-acting-mode="individual">Individual</button>`,
@@ -142,7 +161,34 @@ if (!READY) {
     ].join('');
 
     let context = '';
-    if (mode === 'individual') {
+    if (mode === 'manager') {
+      const types = ctx.appUser?.manager_types || [];
+      const data = await loadContributionManagerData(types);
+      root.innerHTML = `
+        ${actingModeBar(ctx, profile, teams, mode, repTeamId)}
+        ${renderContributionManagerWorkspace(data, teams, types)}
+      `;
+      main.appendChild(root);
+      root.querySelectorAll('.manager-followup-form').forEach(form => {
+        form.addEventListener('submit', async e => {
+          e.preventDefault();
+          const button = form.querySelector('button[type="submit"]');
+          const statusEl = root.querySelector('#kudos-manager-status');
+          try {
+            if (button) button.disabled = true;
+            await saveManagerFollowup(form);
+            if (statusEl) statusEl.innerHTML = '<div class="notice success">Contributor update saved.</div>';
+            setTimeout(()=>refreshToolsInPlace(),250);
+          } catch (err) {
+            if (button) button.disabled = false;
+            if (statusEl) statusEl.innerHTML = `<div class="notice">${esc(err.message || err)}</div>`;
+          }
+        });
+      });
+      root.querySelectorAll('[data-manager-export]').forEach(btn => {
+        btn.addEventListener('click', () => downloadManagerExcel(btn.dataset.managerExport, data, teams));
+      });
+    } else if (mode === 'individual') {
       context = profile
         ? `Normal KUDOS member view • ${esc(profile.name)} • ${esc(teams.find(t=>t.id===profile.team_id)?.name || 'Team')}`
         : 'Normal KUDOS member view • choose an individual profile from the profile button.';
@@ -309,6 +355,9 @@ if (!READY) {
             <option value="team_rep">Team Rep</option>
             <option value="organisation_admin">Organisation Admin</option>
             <option value="workspace_admin">Workspace Admin</option>
+            <option value="safety_manager">Safety Manager</option>
+            <option value="innovation_manager">Innovation Manager</option>
+            <option value="recognition_manager">Recognition Manager</option>
           </select></div>
           <div class="field"><label>Organisation</label><select name="organisation_id" id="kudos-platform-access-org">
             <option value="">Choose organisation…</option>${parentOptions}
@@ -319,7 +368,7 @@ if (!READY) {
           </select></div>
           <button class="btn navy" type="submit">Add scope</button>
         </form>
-        <div class="help" style="margin-top:10px">Workspace Admin = all CHF Performance data. Organisation Admin = selected organisation and all child units. Team Rep = selected team only. Report Viewer = read-only reporting scope.</div>
+        <div class="help" style="margin-top:10px">Workspace Admin = all CHF Performance data. Organisation Admin = selected organisation and all child units. Team Rep = selected team only. Contribution Managers = all-team access to their Safety, Innovation or Recognition queue. Report Viewer = read-only reporting scope.</div>
       </div>
 
       <div class="card rep-tool-card admin-scroll-card">
@@ -355,7 +404,7 @@ if (!READY) {
     const organisationId = String(fd.get('organisation_id') || '').trim() || null;
     const teamId = String(fd.get('team_id') || '').trim() || null;
     if (!authUserId) throw new Error('Choose an account.');
-    if (!['workspace_admin','organisation_admin','team_rep','report_viewer'].includes(role)) throw new Error('Choose a valid platform role.');
+    if (!['workspace_admin','organisation_admin','team_rep','report_viewer','safety_manager','innovation_manager','recognition_manager'].includes(role)) throw new Error('Choose a valid platform role.');
     if (role === 'team_rep' && !teamId) throw new Error('Choose a team for a Team Rep.');
     if (['organisation_admin','report_viewer'].includes(role) && !organisationId) throw new Error('Choose an organisation for this role.');
     const record = {
@@ -747,6 +796,168 @@ if (!READY) {
         recognition: rewardsRes.data || []
       }
     };
+  }
+
+
+  function managerLabel(type) {
+    return type === 'safety' ? 'Flight Safety' : type === 'innovation' ? 'Innovation' : 'Recognition';
+  }
+
+  function managerProfileId(type, row) {
+    return type === 'recognition' ? row.submitter_profile_id : row.profile_id;
+  }
+
+  function managerContributionDetail(type, row) {
+    if (type === 'safety') return {
+      category: row.category || 'Flight Safety',
+      title: row.category || 'Flight Safety',
+      detail: row.description || '',
+      extra: row.external_reference ? `Ref: ${row.external_reference}` : ''
+    };
+    if (type === 'innovation') return {
+      category: row.category || 'Uncategorised',
+      title: row.title || 'Innovation',
+      detail: row.description || '',
+      extra: ''
+    };
+    return {
+      category: 'Recognition',
+      title: row.nominated_person || 'Recognition',
+      detail: row.reason || '',
+      extra: ''
+    };
+  }
+
+  async function loadContributionManagerData(types) {
+    const wanted = [...new Set((types || []).filter(x => ['safety','innovation','recognition'].includes(x)))];
+    const jobs = [
+      db.from('profiles').select('id,name,team_id').eq('active', true).order('name'),
+      db.from('contribution_followups').select('*').in('contribution_type', wanted.length ? wanted : ['__none__']).order('entry_date', {ascending:false}).order('created_at', {ascending:false})
+    ];
+    const map = [];
+    wanted.forEach(type => {
+      const table = type === 'safety' ? 'safety_entries' : type === 'innovation' ? 'innovation_entries' : 'recognition_entries';
+      map.push(type);
+      jobs.push(db.from(table).select('*').order('created_at', {ascending:false}));
+    });
+    const res = await Promise.all(jobs);
+    const err = res.find(x => x.error)?.error;
+    if (err) throw err;
+    const entries = { safety:[], innovation:[], recognition:[] };
+    map.forEach((type, i) => { entries[type] = res[i + 2].data || []; });
+    return {
+      profiles: res[0].data || [],
+      followups: res[1].data || [],
+      entries
+    };
+  }
+
+  function followupMap(data) {
+    return Object.fromEntries((data.followups || []).map(x => [`${x.contribution_type}:${x.contribution_id}`, x]));
+  }
+
+  function renderContributionManagerWorkspace(data, teams, types, adminAll=false) {
+    const profileMap = Object.fromEntries((data.profiles || []).map(p => [p.id,p]));
+    const teamMap = Object.fromEntries((teams || []).map(t => [t.id,t.name]));
+    const fMap = followupMap(data);
+    const statusOptions = [
+      ['submitted','Submitted'],['under_review','Under review'],['actioning','Actioning'],['resolved','Resolved'],['closed','Closed']
+    ];
+    const cards = (types || []).map(type => {
+      const rows = (data.entries[type] || []).map(row => {
+        const profileId = managerProfileId(type,row);
+        const profile = profileMap[profileId];
+        const f = fMap[`${type}:${row.id}`] || {status:'submitted',manager_update:''};
+        const d = managerContributionDetail(type,row);
+        return `
+          <tr>
+            <td>${esc(contributionDate(row))}</td>
+            <td><strong>${esc(profile?.name || 'Profile')}</strong><div class="help">${esc(teamMap[profile?.team_id] || 'Team')}</div></td>
+            <td><strong>${esc(d.title)}</strong>${d.category && d.category!==d.title ? `<div class="help">${esc(d.category)}</div>` : ''}</td>
+            <td class="detail">${esc(d.detail)}${d.extra ? `<div class="help">${esc(d.extra)}</div>` : ''}</td>
+            <td style="min-width:320px">
+              <form class="manager-followup-form" data-manager-type="${esc(type)}" data-contribution-id="${esc(row.id)}" data-profile-id="${esc(profileId)}">
+                <div class="field" style="margin-bottom:8px"><label>Status</label><select name="status">${statusOptions.map(([v,l])=>`<option value="${v}" ${f.status===v?'selected':''}>${l}</option>`).join('')}</select></div>
+                <div class="field" style="margin-bottom:8px"><label>Update visible to contributor</label><textarea name="manager_update" maxlength="4000" placeholder="What is being done, next action, or outcome…">${esc(f.manager_update || '')}</textarea></div>
+                <button class="btn primary compact" type="submit">Save update</button>
+                ${f.manager_updated_at ? `<div class="help" style="margin-top:6px">Updated ${esc(String(f.manager_updated_at).replace('T',' ').slice(0,16))}</div>` : ''}
+              </form>
+            </td>
+          </tr>`;
+      }).join('');
+      return `
+        <div class="card rep-tool-card admin-scroll-card">
+          <div class="challenge-head">
+            <div><div class="eyebrow">${esc(managerLabel(type).toUpperCase())}</div><h3 style="margin:.25rem 0 0">${esc(managerLabel(type))} contributions</h3></div>
+            <button class="btn ghost compact" data-manager-export="${esc(type)}">Download Excel</button>
+          </div>
+          <div class="table-wrap" style="margin-top:12px"><table class="rep-tool-table">
+            <thead><tr><th>Date</th><th>Contributor</th><th>Contribution</th><th>Detail</th><th>Follow-up</th></tr></thead>
+            <tbody>${rows || '<tr><td colspan="5"><div class="empty compact-empty">No contributions found.</div></td></tr>'}</tbody>
+          </table></div>
+        </div>`;
+    }).join('');
+    return `
+      <div class="section-title"><h2>Contribution management</h2><p>Reply to contributors, track action and export records</p></div>
+      <div class="notice">Manager updates are visible to the contributor in their KUDOS profile. Use the narrative for useful follow-up only; do not add classified, protectively marked or sensitive personal information.</div>
+      ${cards}
+      <div id="kudos-manager-status" class="rep-tool-status"></div>`;
+  }
+
+  async function saveManagerFollowup(form) {
+    const type = form.dataset.managerType;
+    const contributionId = form.dataset.contributionId;
+    const profileId = form.dataset.profileId;
+    const fd = new FormData(form);
+    const status = String(fd.get('status') || 'submitted');
+    const managerUpdate = String(fd.get('manager_update') || '').trim();
+    const { error } = await db.from('contribution_followups')
+      .update({
+        status,
+        manager_update: managerUpdate,
+        manager_updated_at: new Date().toISOString()
+      })
+      .eq('contribution_type', type)
+      .eq('contribution_id', contributionId)
+      .eq('contributor_profile_id', profileId);
+    if (error) throw error;
+  }
+
+  function xmlCell(value) {
+    return `<Cell><Data ss:Type="String">${esc(String(value ?? ''))}</Data></Cell>`;
+  }
+
+  function downloadManagerExcel(type, data, teams) {
+    const profileMap = Object.fromEntries((data.profiles || []).map(p=>[p.id,p]));
+    const teamMap = Object.fromEntries((teams || []).map(t=>[t.id,t.name]));
+    const fMap = followupMap(data);
+    const rows = (data.entries[type] || []).map(row => {
+      const profileId = managerProfileId(type,row);
+      const profile = profileMap[profileId];
+      const d = managerContributionDetail(type,row);
+      const f = fMap[`${type}:${row.id}`] || {};
+      return [
+        contributionDate(row), profile?.name || '', teamMap[profile?.team_id] || '',
+        d.category || '', d.title || '', d.detail || '', d.extra || '',
+        f.status || 'submitted', f.manager_update || '', f.manager_updated_at || ''
+      ];
+    });
+    const headers = ['Date','Contributor','Team','Category','Title','Contribution detail','Reference','Status','Manager update','Updated'];
+    const sheetRows = [headers, ...rows].map(r=>`<Row>${r.map(xmlCell).join('')}</Row>`).join('');
+    const xml = `<?xml version="1.0"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:o="urn:schemas-microsoft-com:office:office"
+ xmlns:x="urn:schemas-microsoft-com:office:excel"
+ xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
+ <Worksheet ss:Name="${esc(managerLabel(type).slice(0,31))}"><Table>${sheetRows}</Table></Worksheet>
+</Workbook>`;
+    const blob = new Blob([xml], {type:'application/vnd.ms-excel'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `kudos-${type}-contributions-${new Date().toISOString().slice(0,10)}.xls`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(a.href),1000);
   }
 
   async function loadGlobalProfileData() {
