@@ -780,23 +780,18 @@ if (!READY) {
   }
 
   async function loadGlobalContributionData() {
-    const [profilesRes, safetyRes, innovationRes, rewardsRes, followupsRes] = await Promise.all([
+    const [profilesRes, safety, innovation, recognition, followups] = await Promise.all([
       db.from('profiles').select('id,name,team_id').eq('active', true).order('name'),
-      db.from('safety_entries').select('*').order('created_at', {ascending:false}),
-      db.from('innovation_entries').select('*').order('created_at', {ascending:false}),
-      db.from('recognition_entries').select('*').order('created_at', {ascending:false}),
-      db.from('contribution_followups').select('*').order('entry_date', {ascending:false}).order('created_at', {ascending:false})
+      fetchAllContributionRows('safety_entries'),
+      fetchAllContributionRows('innovation_entries'),
+      fetchAllContributionRows('recognition_entries'),
+      fetchAllFollowups(['safety','innovation','recognition'])
     ]);
-    const err = [profilesRes, safetyRes, innovationRes, rewardsRes, followupsRes].find(r => r.error)?.error;
-    if (err) throw err;
+    if (profilesRes.error) throw profilesRes.error;
     return {
       profiles: profilesRes.data || [],
-      entries: {
-        safety: safetyRes.data || [],
-        innovation: innovationRes.data || [],
-        recognition: rewardsRes.data || []
-      },
-      followups: followupsRes.data || []
+      entries: { safety, innovation, recognition },
+      followups
     };
   }
 
