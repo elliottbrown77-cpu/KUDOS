@@ -1,4 +1,4 @@
-const KUDOS_REP_TOOLS_VERSION = '2026-10-13.4';
+const KUDOS_REP_TOOLS_VERSION = '2026-10-13.5';
 
 const CFG = window.KUDOS_CONFIG || {};
 const SUPABASE_KEY = CFG.SUPABASE_PUBLISHABLE_KEY || CFG.SUPABASE_ANON_KEY || '';
@@ -48,14 +48,17 @@ if (!READY) {
     const orgAdmin = access.find(a => a.role === 'organisation_admin');
     const scopedRep = access.find(a => a.role === 'team_rep');
     const viewer = access.find(a => a.role === 'report_viewer');
+    const managerAccess = access.filter(a => ['safety_manager','innovation_manager','recognition_manager'].includes(a.role));
+    const managerTypes = managerAccess.map(a => a.role.replace('_manager',''));
 
-    let appUser = legacy;
-    if (!appUser) {
-      if (workspaceAdmin) appUser = { auth_user_id:user.id, role:'admin', team_id:null, platform_role:'workspace_admin', workspace_id:workspaceAdmin.workspace_id };
-      else if (orgAdmin) appUser = { auth_user_id:user.id, role:'org_admin', team_id:null, platform_role:'organisation_admin', organisation_id:orgAdmin.organisation_id, workspace_id:orgAdmin.workspace_id };
-      else if (scopedRep) appUser = { auth_user_id:user.id, role:'rep', team_id:scopedRep.team_id, platform_role:'team_rep', workspace_id:scopedRep.workspace_id };
-      else if (viewer) appUser = { auth_user_id:user.id, role:'viewer', team_id:null, platform_role:'report_viewer', organisation_id:viewer.organisation_id, workspace_id:viewer.workspace_id };
-    }
+    let appUser = null;
+    if (legacy?.role === 'admin' || workspaceAdmin) {
+      appUser = { auth_user_id:user.id, role:'admin', team_id:null, platform_role:'workspace_admin', workspace_id:workspaceAdmin?.workspace_id||null };
+    } else if (legacy?.role === 'rep') appUser = legacy;
+    else if (orgAdmin) appUser = { auth_user_id:user.id, role:'org_admin',team_id:null,platform_role:'organisation_admin',organisation_id:orgAdmin.organisation_id,workspace_id:orgAdmin.workspace_id };
+    else if (scopedRep) appUser = { auth_user_id:user.id,role:'rep',team_id:scopedRep.team_id,platform_role:'team_rep',workspace_id:scopedRep.workspace_id };
+    else if (managerAccess.length) appUser = { auth_user_id:user.id,role:'manager',team_id:null,platform_role:'contribution_manager',manager_types:managerTypes,workspace_id:managerAccess[0].workspace_id };
+    else if (viewer) appUser = { auth_user_id:user.id,role:'viewer',team_id:null,platform_role:'report_viewer',organisation_id:viewer.organisation_id,workspace_id:viewer.workspace_id };
 
     const isWorkspaceAdmin = legacy?.role === 'admin' || Boolean(workspaceAdmin);
     return {
@@ -80,6 +83,7 @@ if (!READY) {
   }
 
   function getActingMode(ctx) {
+    if (ctx.appUser?.role === 'manager') return 'manager';
     const stored = localStorage.getItem('kudos_acting_mode_v4') || '';
     if (['admin','org_admin'].includes(ctx.appUser?.role)) {
       return ['individual','rep','admin'].includes(stored) ? stored : 'admin';
@@ -107,7 +111,7 @@ if (!READY) {
   }
 
   function managementTeamsForContext(ctx, teams) {
-    if (ctx.isWorkspaceAdmin) return teams;
+    if (ctx.isWorkspaceAdmin || ctx.appUser?.role === 'manager') return teams;
     const orgScopes = (ctx.workspaceAccess || []).filter(a => a.active !== false && a.role === 'organisation_admin').map(a => a.organisation_id);
     const teamScopes = new Set((ctx.workspaceAccess || []).filter(a => a.active !== false && a.role === 'team_rep').map(a => a.team_id));
     if (ctx.appUser?.role === 'rep' && ctx.appUser.team_id) teamScopes.add(ctx.appUser.team_id);
@@ -309,6 +313,9 @@ if (!READY) {
             <option value="team_rep">Team Rep</option>
             <option value="organisation_admin">Organisation Admin</option>
             <option value="workspace_admin">Workspace Admin</option>
+            <option value="safety_manager">Safety Manager</option>
+            <option value="innovation_manager">Innovation Manager</option>
+            <option value="recognition_manager">Recognition Manager</option>
           </select></div>
           <div class="field"><label>Organisation</label><select name="organisation_id" id="kudos-platform-access-org">
             <option value="">Choose organisation…</option>${parentOptions}
@@ -355,7 +362,7 @@ if (!READY) {
     const organisationId = String(fd.get('organisation_id') || '').trim() || null;
     const teamId = String(fd.get('team_id') || '').trim() || null;
     if (!authUserId) throw new Error('Choose an account.');
-    if (!['workspace_admin','organisation_admin','team_rep','report_viewer'].includes(role)) throw new Error('Choose a valid platform role.');
+    if (!['workspace_admin','organisation_admin','team_rep','report_viewer','safety_manager','innovation_manager','recognition_manager'].includes(role)) throw new Error('Choose a valid platform role.');
     if (role === 'team_rep' && !teamId) throw new Error('Choose a team for a Team Rep.');
     if (['organisation_admin','report_viewer'].includes(role) && !organisationId) throw new Error('Choose an organisation for this role.');
     const record = {
@@ -1621,6 +1628,9 @@ if (!READY) {
             <option value="rep">Team Rep</option>
             <option value="organisation_admin">Organisation Admin</option>
             <option value="admin">Workspace Admin</option>
+            <option value="safety_manager">Safety Manager</option>
+            <option value="innovation_manager">Innovation Manager</option>
+            <option value="recognition_manager">Recognition Manager</option>
           </select></div>
           <div class="field"><label>Organisation</label><select name="organisation_id" id="kudos-invite-org">
             <option value="">Choose organisation…</option>${platformOrgOptions}
@@ -1695,7 +1705,7 @@ if (!READY) {
     organisationId = String(organisationId || '').trim();
     if (!email) throw new Error('Enter an email address.');
     if (password.length < 10) throw new Error('Temporary password must be at least 10 characters.');
-    if (!['rep','admin','organisation_admin','report_viewer'].includes(role)) throw new Error('Choose a valid access role.');
+    if (!['rep','admin','organisation_admin','report_viewer','safety_manager','innovation_manager','recognition_manager'].includes(role)) throw new Error('Choose a valid access role.');
     if (role === 'rep' && !teamId) throw new Error('Choose a team for the Team Rep.');
     if (['organisation_admin','report_viewer'].includes(role) && !organisationId) throw new Error('Choose an organisation for this role.');
 
@@ -1912,7 +1922,24 @@ if (!READY) {
     const root = document.createElement('section');
     root.id = 'kudos-rep-tools';
 
-    if (mode === 'individual') {
+    if (mode === 'manager') {
+      const types=ctx.appUser?.manager_types||[];
+      const contributionData=await attachContributionFollowups(await loadGlobalContributionData(),null);
+      root.innerHTML = `
+        <div class="card acting-shell">
+          <h2>Acting as: Contribution Manager</h2>
+          <p>Manage ${types.map(type=>type.charAt(0).toUpperCase()+type.slice(1)).join(', ')} contributions across all teams</p>
+          <button class="btn ghost" data-kudos-signout>Sign out</button>
+        </div>
+        ${renderContributionQueues(contributionData,teams,true)}
+      `;
+      main.appendChild(root);
+      root.querySelectorAll('[data-export-contributions]').forEach(button=>{
+        if (!types.includes(button.dataset.exportContributions)) button.closest('.rep-tool-card')?.remove();
+      });
+      root.querySelectorAll('[data-rep-delete-entry]').forEach(button=>button.remove());
+      bindContributionUpdates(root,contributionData,teams,true);
+    } else if (mode === 'individual') {
       root.innerHTML = `
         ${actingModeBar(ctx, profile, teams, mode, repTeamId)}
         <div class="card">
@@ -2278,7 +2305,7 @@ if (!READY) {
         renderPasswordSignin(main);
         return;
       }
-      if (!ctx.appUser || !['rep', 'admin', 'org_admin'].includes(ctx.appUser.role)) return;
+      if (!ctx.appUser || !['rep', 'admin', 'org_admin', 'manager'].includes(ctx.appUser.role)) return;
 
       const [allTeams, profile] = await Promise.all([getTeams(), getSelectedProfileContext()]);
       const teams = managementTeamsForContext(ctx, allTeams);
@@ -2286,7 +2313,9 @@ if (!READY) {
       const repTeamId = resolvedRepTeamId(ctx, profile, teams);
 
       let teamId = '';
-      if (mode === 'rep') {
+      if (mode === 'manager') {
+        teamId = '';
+      } else if (mode === 'rep') {
         teamId = repTeamId;
       } else if (mode === 'admin') {
         teamId = localStorage.getItem('kudos_rep_tools_team') || teams[0]?.id || '';
