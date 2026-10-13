@@ -830,26 +830,50 @@ if (!READY) {
     };
   }
 
+  async function fetchAllContributionRows(table) {
+    const all = [];
+    const pageSize = 1000;
+    for (let from = 0; ; from += pageSize) {
+      const { data, error } = await db.from(table).select('*')
+        .order('created_at', {ascending:false})
+        .range(from, from + pageSize - 1);
+      if (error) throw error;
+      all.push(...(data || []));
+      if (!data || data.length < pageSize) break;
+    }
+    return all;
+  }
+
+  async function fetchAllFollowups(types) {
+    const all = [];
+    const pageSize = 1000;
+    for (let from = 0; ; from += pageSize) {
+      const { data, error } = await db.from('contribution_followups').select('*')
+        .in('contribution_type', types.length ? types : ['__none__'])
+        .order('entry_date', {ascending:false})
+        .order('created_at', {ascending:false})
+        .range(from, from + pageSize - 1);
+      if (error) throw error;
+      all.push(...(data || []));
+      if (!data || data.length < pageSize) break;
+    }
+    return all;
+  }
+
   async function loadContributionManagerData(types) {
     const wanted = [...new Set((types || []).filter(x => ['safety','innovation','recognition'].includes(x)))];
-    const jobs = [
-      db.from('profiles').select('id,name,team_id').eq('active', true).order('name'),
-      db.from('contribution_followups').select('*').in('contribution_type', wanted.length ? wanted : ['__none__']).order('entry_date', {ascending:false}).order('created_at', {ascending:false})
-    ];
-    const map = [];
-    wanted.forEach(type => {
-      const table = type === 'safety' ? 'safety_entries' : type === 'innovation' ? 'innovation_entries' : 'recognition_entries';
-      map.push(type);
-      jobs.push(db.from(table).select('*').order('created_at', {ascending:false}));
-    });
-    const res = await Promise.all(jobs);
-    const err = res.find(x => x.error)?.error;
-    if (err) throw err;
+    const profilesPromise = db.from('profiles').select('id,name,team_id').eq('active', true).order('name');
+    const [profilesRes, followups, ...entrySets] = await Promise.all([
+      profilesPromise,
+      fetchAllFollowups(wanted),
+      ...wanted.map(type => fetchAllContributionRows(type === 'safety' ? 'safety_entries' : type === 'innovation' ? 'innovation_entries' : 'recognition_entries'))
+    ]);
+    if (profilesRes.error) throw profilesRes.error;
     const entries = { safety:[], innovation:[], recognition:[] };
-    map.forEach((type, i) => { entries[type] = res[i + 2].data || []; });
+    wanted.forEach((type, i) => { entries[type] = entrySets[i] || []; });
     return {
-      profiles: res[0].data || [],
-      followups: res[1].data || [],
+      profiles: profilesRes.data || [],
+      followups,
       entries
     };
   }
@@ -1698,7 +1722,7 @@ if (!READY) {
           <div class="admin-access-metric"><b>${unassigned}</b><span>Unassigned access accounts</span></div>
         </div>
 
-        <h3>Create a Rep or Admin account</h3>
+        <h3>Create a management account</h3>
         <div class="notice">Creates a confirmed KUDOS account immediately using email + password. No invitation email is required. Give the temporary password to the user securely; they can change it later.</div>
         <form id="kudos-access-invite-form" class="admin-invite-form" style="margin-top:14px">
           <div class="field"><label>Email</label><input name="email" type="email" required autocomplete="email" placeholder="name@example.com"></div>
