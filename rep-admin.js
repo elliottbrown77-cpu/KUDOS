@@ -1,4 +1,4 @@
-const KUDOS_REP_TOOLS_VERSION = '2026-09-21.6';
+const KUDOS_REP_TOOLS_VERSION = '2026-10-13.4';
 
 const CFG = window.KUDOS_CONFIG || {};
 const SUPABASE_KEY = CFG.SUPABASE_PUBLISHABLE_KEY || CFG.SUPABASE_ANON_KEY || '';
@@ -80,7 +80,7 @@ if (!READY) {
   }
 
   function getActingMode(ctx) {
-    const stored = localStorage.getItem('kudos_acting_mode') || '';
+    const stored = localStorage.getItem('kudos_acting_mode_v4') || '';
     if (['admin','org_admin'].includes(ctx.appUser?.role)) {
       return ['individual','rep','admin'].includes(stored) ? stored : 'admin';
     }
@@ -762,11 +762,133 @@ if (!READY) {
     };
   }
 
+  function followupEditor(type,item,recordMap){
+  const f=recordMap[`${type}:${item.id}`]||{};
+  const options=[['submitted','Submitted'],['under_review','Under review'],['actioning','Actioning'],['resolved','Resolved'],['closed','Closed']];
+  const profileId=type==='recognition'?item.submitter_profile_id:item.profile_id;
+  return `<td style="min-width:290px">
+    <form class="kudos-followup-form" data-type="${esc(type)}" data-id="${esc(item.id)}" data-profile="${esc(profileId)}">
+      <label class="help">Status</label>
+      <select name="status" style="width:100%;margin-bottom:8px">${options.map(([val,label])=>`<option value="${val}" ${val===(f.status||'submitted')?'selected':''}>${label}</option>`).join('')}</select>
+      <label class="help">Update to contributor</label>
+      <textarea name="update" maxlength="4000" rows="3" style="width:100%;min-height:74px" placeholder="Actions taken, current position and next steps">${esc(f.manager_update||'')}</textarea>
+      <button class="btn primary compact" type="submit">Save update</button>
+    </form>
+    ${f.manager_updated_at?`<div class="help">Updated ${esc(String(f.manager_updated_at).replace('T',' ').slice(0,16))}</div>`:''}
+  </td>`;
+}
+
+  async function pagedContributions(table,column=null,ids=null) {
+  if(column && (!ids || !ids.length))return [];
+  const all=[];
+  for(let from=0;from<50000;from+=500) {
+    let query=db.from(table).select('*').order('created_at',{ascending:false}).range(from,from+499);
+    if(column)query=query.in(column,ids);
+    const {data,error}=await query;
+    if(error)throw error;
+    all.push(...(data||[]));
+    if(!data||data.length<500)return all;
+  }
+  throw Error('The contribution export is too large. Please contact an administrator.');
+}
+
+  async function attachContributionFollowups(data,scopeIds=null) {
+  const follows=await pagedContributions('contribution_followups',scopeIds?'contributor_profile_id':null,scopeIds);
+  return {...data,followups:follows};
+}
+
+  async function kudosLoadXlsx() {
+  if(window.XLSX?.utils?.aoa_to_sheet)return window.XLSX;
+  if(!window.__kudosXlsxPromise){
+    window.__kudosXlsxPromise=new Promise((resolve,reject)=>{
+      const script=document.createElement('script');
+      script.src='https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
+      script.async=true;
+      script.onload=()=>window.XLSX?.utils?resolve(window.XLSX):reject(Error('Excel export library unavailable'));
+      script.onerror=()=>reject(Error('Could not load Excel export library'));
+      document.head.appendChild(script);
+    }).catch(error=>{window.__kudosXlsxPromise=null;throw error});
+  }
+  return window.__kudosXlsxPromise;
+}
+
+  async function kudosExcelExport(type,contributionData,teams,global) {
+  const names=Object.fromEntries((contributionData.profiles||[]).map(p=>[p.id,p]));
+  const teamNames=Object.fromEntries((teams||[]).map(t=>[t.id,t.name]));
+  const ids=(contributionData.profiles||[]).map(p=>p.id);
+  const table=type==='safety'?'safety_entries':type==='innovation'?'innovation_entries':'recognition_entries';
+  const ownerCol=type==='recognition'?'submitter_profile_id':'profile_id';
+  const items=await pagedContributions(table,global?null:ownerCol,global?null:ids);
+  const followups=await pagedContributions('contribution_followups',global?null:'contributor_profile_id',global?null:ids);
+  const map=Object.fromEntries(followups.map(f=>[`${f.contribution_type}:${f.contribution_id}`,f]));
+  const headers=['Date','ID','Contributor','Team','Category','Title / Recognised person','Details','External reference','Status','Follow-up update','Last updated'];
+  const rows=items.map(item=>{
+    const p=names[item[ownerCol]]||{};
+    const f=map[`${type}:${item.id}`]||{};
+    return [
+      contributionDate(item),String(item.id||''),String(p.name||''),String(teamNames[p.team_id]||''),
+      type==='recognition'?'Recognition':String(item.category||''),
+      type==='recognition'?String(item.nominated_person||''):String(item.title||item.category||''),
+      type==='recognition'?String(item.reason||''):String(item.description||''),
+      type==='safety'?String(item.external_reference||''):'',
+      String(f.status||'submitted'),String(f.manager_update||''),String(f.manager_updated_at||'')
+    ];
+  });
+  const XLSX=await kudosLoadXlsx();
+  const sheet=XLSX.utils.aoa_to_sheet([headers,...rows]);
+  sheet['!cols']=[14,37,25,24,22,32,65,25,18,65,24].map(wch=>({wch}));
+  const book=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(book,sheet,type==='safety'?'Safety':type==='innovation'?'Innovation':'Recognition');
+  XLSX.writeFile(book,`KUDOS-${type}-${new Date().toISOString().slice(0,10)}.xlsx`);
+}
+
+  function bindContributionUpdates(root,contributionData,teams,global) {
+  root.querySelectorAll('.kudos-followup-form').forEach(form=>{
+    form.addEventListener('submit',async event=>{
+      event.preventDefault();
+      const button=form.querySelector('button[type="submit"]');
+      if(button)button.disabled=true;
+      const statusBox=root.querySelector('#kudos-followup-notice');
+      try {
+        const fd=new FormData(form);
+        const {data,error}=await db.from('contribution_followups').update({
+          status:String(fd.get('status')||'submitted'),
+          manager_update:String(fd.get('update')||'').trim(),
+          manager_updated_at:new Date().toISOString()
+        }).eq('contribution_type',form.dataset.type)
+          .eq('contribution_id',form.dataset.id)
+          .eq('contributor_profile_id',form.dataset.profile)
+          .select('id');
+        if(error)throw error;
+        if(!data?.length)throw Error('No follow-up row was updated. Check your permissions.');
+        if(statusBox)statusBox.textContent='Update saved and visible to contributor.';
+        refreshToolsInPlace();
+      } catch(error) {
+        if(statusBox)statusBox.textContent=`Could not save update: ${error.message||error}`;
+        if(button)button.disabled=false;
+      }
+    });
+  });
+  root.querySelectorAll('[data-export-contributions]').forEach(button=>{
+    button.addEventListener('click',async()=>{
+      const statusBox=root.querySelector('#kudos-followup-notice');
+      button.disabled=true;
+      try {
+        await kudosExcelExport(button.dataset.exportContributions,contributionData,teams,global);
+        if(statusBox)statusBox.textContent='Excel file downloaded.';
+      } catch(error) {
+        if(statusBox)statusBox.textContent=`Download failed: ${error.message||error}`;
+      } finally {button.disabled=false;}
+    });
+  });
+}
+
   function contributionDate(x) {
     return x.entry_date || String(x.created_at || '').slice(0, 10) || '—';
   }
 
   function renderContributionQueues(data, teams=[], global=false) {
+    const followupMap=Object.fromEntries((data.followups||[]).map(f=>[`${f.contribution_type}:${f.contribution_id}`,f]));
     const profileMap = Object.fromEntries(data.profiles.map(p => [p.id, p]));
     const teamMap = Object.fromEntries(teams.map(t => [t.id, t.name]));
     const teamCell = profileId => {
@@ -782,6 +904,7 @@ if (!READY) {
         ${global ? `<td>${teamCell(x.profile_id)}</td>` : ''}
         <td>${esc(x.category || 'Flight Safety')}</td>
         <td class="detail">${esc(x.description || '')}${x.external_reference ? `<div class="help">Ref: ${esc(x.external_reference)}</div>` : ''}</td>
+        ${followupEditor('safety',x,followupMap)}
         ${global ? `<td class="num"><button class="btn danger compact rep-tool-danger" data-rep-delete-entry="${esc(x.id)}" data-entry-type="safety">Delete</button></td>` : ''}
       </tr>`).join('');
 
@@ -794,6 +917,7 @@ if (!READY) {
         <td>${esc(x.category || 'Uncategorised')}</td>
         <td>${esc(x.title || 'Innovation')}</td>
         <td class="detail">${esc(x.description || '')}</td>
+        ${followupEditor('innovation',x,followupMap)}
         ${global ? `<td class="num"><button class="btn danger compact rep-tool-danger" data-rep-delete-entry="${esc(x.id)}" data-entry-type="innovation">Delete</button></td>` : ''}
       </tr>`).join('');
 
@@ -805,6 +929,7 @@ if (!READY) {
         ${global ? `<td>${teamCell(x.submitter_profile_id)}</td>` : ''}
         <td>${esc(x.nominated_person || 'Not recorded')}</td>
         <td class="detail">${esc(x.reason || '')}</td>
+        ${followupEditor('recognition',x,followupMap)}
         ${global ? `<td class="num"><button class="btn danger compact rep-tool-danger" data-rep-delete-entry="${esc(x.id)}" data-entry-type="recognition">Delete</button></td>` : ''}
       </tr>`).join('');
 
@@ -820,24 +945,26 @@ if (!READY) {
 
     return `
       <div class="section-title"><h2>Contribution areas</h2><p>${scopeText} Safety, Innovation and Rewards</p></div>
+      <div class="notice">Follow-up narratives and statuses are visible to contributors. Do not include sensitive or protectively marked information.</div>
 
       <div class="card rep-tool-card admin-scroll-card">
         <div class="eyebrow">FLIGHT SAFETY</div>
-        <h3 style="margin:.25rem 0 12px">Safety contributions</h3>
-        ${table(global ? ['Date','Submitted by','Team','Category','Contribution',''] : ['Date','Submitted by','Category','Contribution'], safetyRows, 'No Flight Safety contributions found.')}
+        <h3 style="margin:.25rem 0 12px">Safety contributions <button type="button" class="btn ghost compact" data-export-contributions="safety">Download Excel</button></h3>
+        ${table(global ? ['Date','Submitted by','Team','Category','Contribution','Update',''] : ['Date','Submitted by','Category','Contribution','Update'], safetyRows, 'No Flight Safety contributions found.')}
       </div>
 
       <div class="card rep-tool-card admin-scroll-card">
         <div class="eyebrow">INNOVATION</div>
-        <h3 style="margin:.25rem 0 12px">Innovation contributions</h3>
-        ${table(global ? ['Date','Submitted by','Team','Category','Idea','Detail',''] : ['Date','Submitted by','Category','Idea','Detail'], innovationRows, 'No Innovation contributions found.')}
+        <h3 style="margin:.25rem 0 12px">Innovation contributions <button type="button" class="btn ghost compact" data-export-contributions="innovation">Download Excel</button></h3>
+        ${table(global ? ['Date','Submitted by','Team','Category','Idea','Detail','Update',''] : ['Date','Submitted by','Category','Idea','Detail','Update'], innovationRows, 'No Innovation contributions found.')}
       </div>
 
       <div class="card rep-tool-card admin-scroll-card">
         <div class="eyebrow">REWARDS</div>
-        <h3 style="margin:.25rem 0 12px">Recognition / rewards</h3>
-        ${table(global ? ['Date','Submitted by','Team','Recognised person','Reason',''] : ['Date','Submitted by','Recognised person','Reason'], rewardRows, 'No Recognition / Reward contributions found.')}
+        <h3 style="margin:.25rem 0 12px">Recognition / rewards <button type="button" class="btn ghost compact" data-export-contributions="recognition">Download Excel</button></h3>
+        ${table(global ? ['Date','Submitted by','Team','Recognised person','Reason','Update',''] : ['Date','Submitted by','Recognised person','Reason','Update'], rewardRows, 'No Recognition / Reward contributions found.')}
       </div>
+      <div id="kudos-followup-notice" class="rep-tool-status" role="status" aria-live="polite"></div>
     `;
   }
 
@@ -1808,6 +1935,7 @@ if (!READY) {
         const [adminData, contributionData, globalProfileData, moderationData, platformData] = isGlobalAdmin
           ? await Promise.all([loadAccessAdminData(), loadGlobalContributionData(), loadGlobalProfileData(), loadGlobalModerationData(), loadPlatformAdminData()])
           : [null, data, null, data, null];
+        const scopedContributionData=await attachContributionFollowups(contributionData,isGlobalAdmin?null:data.profiles.map(p=>p.id));
         const selectedTeam = teams.find(t => t.id === teamId);
 
         root.innerHTML = `
@@ -1831,12 +1959,13 @@ if (!READY) {
           ${renderTeamNamesSection(teams, ctx, teamId, isGlobalAdmin)}
           ${renderChallengeSection(data, mode === 'admin', isGlobalAdmin)}
           ${renderEntrySection(moderationData, teams, isGlobalAdmin)}
-          ${renderContributionQueues(contributionData, teams, isGlobalAdmin)}
+          ${renderContributionQueues(scopedContributionData, teams, isGlobalAdmin)}
           ${renderPointsSection(data, mode === 'admin')}
           ${mode === 'admin' ? renderProfileManagementSection(globalProfileData || data, teams, isGlobalAdmin) : ''}
           ${adminData ? renderAccessAdminSection(ctx, teams, adminData, platformData) : ''}
         `;
         main.appendChild(root);
+        bindContributionUpdates(root,scopedContributionData,teams,isGlobalAdmin);
 
         document.getElementById('kudos-rep-tools-team')?.addEventListener('change', e => {
           localStorage.setItem('kudos_rep_tools_team', e.target.value);
@@ -2118,7 +2247,7 @@ if (!READY) {
 
     root.querySelectorAll('[data-kudos-acting-mode]').forEach(btn => {
       btn.addEventListener('click', () => {
-        localStorage.setItem('kudos_acting_mode', btn.dataset.kudosActingMode);
+        localStorage.setItem('kudos_acting_mode_v4', btn.dataset.kudosActingMode);
         document.getElementById('kudos-rep-tools')?.remove();
         schedule();
       });
@@ -2130,7 +2259,7 @@ if (!READY) {
 
     root.querySelector('[data-kudos-signout]')?.addEventListener('click', async () => {
       await db.auth.signOut();
-      localStorage.removeItem('kudos_acting_mode');
+      localStorage.removeItem('kudos_acting_mode_v4');
       window.location.reload();
     });
   }
