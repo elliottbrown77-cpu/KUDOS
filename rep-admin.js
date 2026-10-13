@@ -1996,7 +1996,36 @@ if (!READY) {
     const root = document.createElement('section');
     root.id = 'kudos-rep-tools';
 
-    if (mode === 'individual') {
+    if (mode === 'manager') {
+      const types = ctx.appUser?.manager_types || [];
+      const data = await loadContributionManagerData(types);
+      root.innerHTML = `
+        ${actingModeBar(ctx, profile, teams, mode, repTeamId)}
+        ${renderContributionManagerWorkspace(data, teams, types)}
+      `;
+      main.appendChild(root);
+
+      root.querySelectorAll('.manager-followup-form').forEach(form => {
+        form.addEventListener('submit', async e => {
+          e.preventDefault();
+          const button = form.querySelector('button[type="submit"]');
+          const statusEl = root.querySelector('#kudos-manager-status');
+          try {
+            if (button) button.disabled = true;
+            await saveManagerFollowup(form);
+            if (statusEl) statusEl.innerHTML = '<div class="notice success">Contributor update saved.</div>';
+            setTimeout(() => refreshToolsInPlace(), 250);
+          } catch (err) {
+            if (button) button.disabled = false;
+            if (statusEl) statusEl.innerHTML = `<div class="notice">${esc(err.message || err)}</div>`;
+          }
+        });
+      });
+
+      root.querySelectorAll('[data-manager-export]').forEach(btn => {
+        btn.addEventListener('click', () => downloadManagerExcel(btn.dataset.managerExport, data, teams));
+      });
+    } else if (mode === 'individual') {
       root.innerHTML = `
         ${actingModeBar(ctx, profile, teams, mode, repTeamId)}
         <div class="card">
