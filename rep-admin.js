@@ -1,4 +1,4 @@
-const KUDOS_REP_TOOLS_VERSION = '2026-10-13.1';
+const KUDOS_REP_TOOLS_VERSION = '2026-10-13.2';
 
 const CFG = window.KUDOS_CONFIG || {};
 const SUPABASE_KEY = CFG.SUPABASE_PUBLISHABLE_KEY || CFG.SUPABASE_ANON_KEY || '';
@@ -84,7 +84,7 @@ if (!READY) {
 
   function getActingMode(ctx) {
     if (ctx.appUser?.role === 'manager') return 'manager';
-    const stored = localStorage.getItem('kudos_acting_mode') || '';
+    const stored = localStorage.getItem('kudos_acting_mode_v2') || '';
     if (['admin','org_admin'].includes(ctx.appUser?.role)) {
       return ['individual','rep','admin'].includes(stored) ? stored : 'admin';
     }
@@ -2402,7 +2402,7 @@ if (!READY) {
 
     root.querySelectorAll('[data-kudos-acting-mode]').forEach(btn => {
       btn.addEventListener('click', () => {
-        localStorage.setItem('kudos_acting_mode', btn.dataset.kudosActingMode);
+        localStorage.setItem('kudos_acting_mode_v2', btn.dataset.kudosActingMode);
         document.getElementById('kudos-rep-tools')?.remove();
         schedule();
       });
@@ -2414,6 +2414,7 @@ if (!READY) {
 
     root.querySelector('[data-kudos-signout]')?.addEventListener('click', async () => {
       await db.auth.signOut();
+      localStorage.removeItem('kudos_acting_mode_v2');
       localStorage.removeItem('kudos_acting_mode');
       window.location.reload();
     });
