@@ -1707,6 +1707,9 @@ if (!READY) {
             <option value="rep">Team Rep</option>
             <option value="organisation_admin">Organisation Admin</option>
             <option value="admin">Workspace Admin</option>
+            <option value="safety_manager">Safety Manager</option>
+            <option value="innovation_manager">Innovation Manager</option>
+            <option value="recognition_manager">Recognition Manager</option>
           </select></div>
           <div class="field"><label>Organisation</label><select name="organisation_id" id="kudos-invite-org">
             <option value="">Choose organisation…</option>${platformOrgOptions}
@@ -1781,7 +1784,7 @@ if (!READY) {
     organisationId = String(organisationId || '').trim();
     if (!email) throw new Error('Enter an email address.');
     if (password.length < 10) throw new Error('Temporary password must be at least 10 characters.');
-    if (!['rep','admin','organisation_admin','report_viewer'].includes(role)) throw new Error('Choose a valid access role.');
+    if (!['rep','admin','organisation_admin','report_viewer','safety_manager','innovation_manager','recognition_manager'].includes(role)) throw new Error('Choose a valid access role.');
     if (role === 'rep' && !teamId) throw new Error('Choose a team for the Team Rep.');
     if (['organisation_admin','report_viewer'].includes(role) && !organisationId) throw new Error('Choose an organisation for this role.');
 
