@@ -74,6 +74,22 @@ function loadDemo(){
 }
 function saveDemo(){ if(state.mode==='demo') localStorage.setItem('kudos_demo_data',JSON.stringify(state.data)); }
 
+async function loadAllProgressHistory(){
+  const rows=[];
+  const pageSize=500;
+  // A single API response cuts off at 1,000 rows; historical progress currently exceeds that.
+  for(let from=0;from<100000;from+=pageSize){
+    const {data,error}=await supabase.from('progress_history')
+      .select('challenge_id,profile_id,entry_date,daily_value')
+      .order('entry_date').order('challenge_id').order('profile_id')
+      .range(from,from+pageSize-1);
+    if(error)throw error;
+    rows.push(...(data||[]));
+    if(!data||data.length<pageSize)return {data:rows,error:null};
+  }
+  throw new Error('Progress history exceeded the supported reporting range.');
+}
+
 async function loadSupabase(){
   const [teams,profiles,challenges,psfs,challengePsfs,challengeProgress,profileTotals,profileScores,teamScores,progressHistory,progressEntryFeed,achievementTotals,weeklyActivity,weeklyPsfEngagement,currentWeekHistory] = await Promise.all([
     supabase.from('teams').select('*').order('name'),
@@ -86,7 +102,7 @@ async function loadSupabase(){
     supabase.from('profile_challenge_totals').select('*').gt('contribution',0).order('challenge_id').order('profile_id'),
     supabase.from('profile_scores').select('*'),
     supabase.from('team_scores').select('*'),
-    supabase.from('progress_history').select('*').order('entry_date'),
+    loadAllProgressHistory(),
     supabase.from('progress_entry_feed').select('*').order('entry_date',{ascending:false}).order('created_at',{ascending:false}),
     supabase.from('profile_achievement_totals').select('*'),
     supabase.from('profile_weekly_activity').select('*').order('week_start'),
@@ -686,15 +702,83 @@ function cumulativePoints(challenge,profileId=null){
   return pts;
 }
 function svgChart(challenge,profileId=null){
-  const pts=cumulativePoints(challenge,profileId); const target=Number(challenge.target||1);
+  const pts=cumulativePoints(challenge,profileId);
+  const target=Number(challenge.target||0);
   if(!pts.length) return `<div class="empty">Progress over time will appear after contributions are logged.</div>`;
-  const W=700,H=170,pad=28,max=Math.max(target,...pts.map(p=>p.value),1); const step=pts.length>1?(W-pad*2)/(pts.length-1):0;
-  const coords=pts.map((p,i)=>({x:pad+i*step,y:H-pad-(p.value/max)*(H-pad*2),...p}));
-  const d=coords.map((p,i)=>`${i?'L':'M'} ${p.x} ${p.y}`).join(' '); const gy=H-pad-(target/max)*(H-pad*2);
-  const dots=coords.map(p=>`<circle cx="${p.x}" cy="${p.y}" r="4" fill="#435F46"/>`).join('');
-  return `<svg class="spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none"><line class="axis" x1="${pad}" y1="${H-pad}" x2="${W-pad}" y2="${H-pad}"/><line class="goal" x1="${pad}" y1="${gy}" x2="${W-pad}" y2="${gy}"/><path class="series" d="${d}"/>${dots}<text x="${pad}" y="15">Target ${fmt(target)} ${esc(challenge.unit)}</text><text x="${pad}" y="${H-7}">${esc(pts[0].date)}</text><text x="${W-pad-70}" y="${H-7}">${esc(pts.at(-1).date)}</text></svg>`;
-}
 
+  // Keep zero in view, but do not force the chart to use the (sometimes enormous)
+  // final challenge target. The ceiling moves out automatically as progress grows.
+  const observed=Math.max(0,...pts.map(p=>Number(p.value)||0));
+  const rawCeiling=Math.max(observed*1.25,1);
+  const order=Math.pow(10,Math.floor(Math.log10(rawCeiling)));
+  const nice=[1,1.25,1.5,2,2.5,3,4,5,7.5,10];
+  const ceiling=(nice.find(n=>n*order>=rawCeiling-1e-9)||10)*order;
+  const unit=String(challenge.unit||'units');
+  const current=Number(pts.at(-1).value)||0;
+  const fraction=target>0?current/target:0;
+
+  const W=700,H=232,L=79,R=24,T=24,B=34;
+  const width=W-L-R,height=H-T-B;
+  const firstTime=Date.parse(`${pts[0].date}T00:00:00Z`);
+  const lastTime=Date.parse(`${pts.at(-1).date}T00:00:00Z`);
+  const useDates=Number.isFinite(firstTime)&&Number.isFinite(lastTime)&&lastTime>firstTime;
+  const coords=pts.map((p,i)=>{
+    const when=Date.parse(`${p.date}T00:00:00Z`);
+    const ratio=useDates&&Number.isFinite(when)
+      ?(when-firstTime)/(lastTime-firstTime)
+      :(pts.length>1?i/(pts.length-1):0);
+    return {...p,x:L+Math.max(0,Math.min(1,ratio))*width,
+      y:T+height-Math.max(0,Number(p.value)||0)/ceiling*height};
+  });
+  const linePath=coords.map((p,i)=>`${i?'L':'M'} ${p.x.toFixed(2)} ${p.y.toFixed(2)}`).join(' ');
+  const areaPath=`${linePath} L ${coords.at(-1).x.toFixed(2)} ${(T+height).toFixed(2)} L ${coords[0].x.toFixed(2)} ${(T+height).toFixed(2)} Z`;
+  const axisNum=n=>{
+    if(Math.abs(n)>=1e6)return `${Number((n/1e6).toPrecision(3))}m`;
+    if(Math.abs(n)>=1000)return `${Number((n/1000).toPrecision(3))}k`;
+    return `${Number(n.toPrecision(3))}`;
+  };
+  const grid=Array.from({length:5},(_,i)=>{
+    const value=ceiling*i/4,y=T+height-(height*i/4);
+    return `<line class="chart-grid" x1="${L}" x2="${W-R}" y1="${y}" y2="${y}"/>
+      <text class="chart-y-label" text-anchor="end" x="${L-12}" y="${y+4}">${esc(axisNum(value))}</text>`;
+  }).join('');
+  const targetVisible=target>0&&target<=ceiling;
+  const targetY=targetVisible?T+height-(target/ceiling)*height:0;
+  const targetLine=targetVisible
+    ?`<line class="goal" x1="${L}" x2="${W-R}" y1="${targetY}" y2="${targetY}"><title>Team target: ${esc(fmt(target))} ${esc(unit)}</title></line>`
+    :'';
+  const stride=Math.max(1,Math.ceil(coords.length/24));
+  const dots=coords.filter((p,i)=>i===coords.length-1||i%stride===0)
+    .map(p=>`<circle class="chart-dot" cx="${p.x}" cy="${p.y}" r="3.5">
+      <title>${esc(p.date)}: ${esc(fmt(p.value))} ${esc(unit)}</title>
+    </circle>`).join('');
+  const last=coords.at(-1);
+  const subtitle=profileId?'Individual contribution':'Team progress';
+  return `<div class="adaptive-chart">
+    <div class="chart-topline">
+      <div><div class="chart-series-label">${subtitle}</div><strong class="chart-current">${fmt(current)} <small>${esc(unit)}</small></strong></div>
+      <div class="chart-goal-meta"><strong>${pct(fraction)}</strong> of team target <span>${fmt(target)} ${esc(unit)}</span></div>
+    </div>
+    <svg class="spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img"
+      aria-label="${esc(challenge.title)} progress chart. Currently ${esc(fmt(current))} ${esc(unit)}. Auto-scaled vertical axis zero to ${esc(fmt(ceiling))} ${esc(unit)}. Team target ${esc(fmt(target))} ${esc(unit)}.">
+      <defs><linearGradient id="kudos-progress-area" x1="0" x2="0" y1="0" y2="1">
+        <stop offset="0%" stop-color="#435F46" stop-opacity=".24"/>
+        <stop offset="100%" stop-color="#435F46" stop-opacity=".02"/>
+      </linearGradient></defs>
+      ${grid}
+      ${targetLine}
+      <path class="chart-area" d="${areaPath}"/>
+      <path class="series" d="${linePath}"/>
+      ${dots}
+      <circle class="chart-last-dot" cx="${last.x}" cy="${last.y}" r="5"/>
+      <text class="chart-date-label" x="${L}" y="${H-10}">${esc(pts[0].date)}</text>
+      <text class="chart-date-label" text-anchor="end" x="${W-R}" y="${H-10}">${esc(pts.at(-1).date)}</text>
+    </svg>
+    <div class="chart-scale-note"><strong>Auto zoom</strong> · Vertical scale: 0–${fmt(ceiling)} ${esc(unit)}. It expands as progress increases.
+      ${targetVisible?'Dashed line = team target.':'The full team target is shown above, not on this zoomed-in scale.'}
+    </div>
+  </div>`;
+}
 function progressCommentsBox(challengeIds, profileId=null) {
   const ids=new Set(Array.isArray(challengeIds)?challengeIds:[challengeIds]);
   const rows=(state.mode==='supabase'
