@@ -608,7 +608,7 @@ function contributionQuickActions(home=false){
 
 function homeView(){
   const p=currentProfile(), team=p?.team_id || state.teamFilter, challenges=activeTeamChallenges(team), avg=teamAverage(team), cov=psfCoverage(team);
-  return `<section class="hero"><div><h1 class="hero-brand"><img src="kudos-hero.svg?v=brand-colours-1" alt="KUDOS — Human Performance Optimisation" width="1700" height="495"></h1><p>Team challenges built around the factors that shape performance. Small actions. Better performance. Challenge progress tracks the real measure, while KUDOS points reward the value of the contribution.</p><span class="strap">READY TO LEAD • READY TO FIGHT • READY TO WIN</span></div></section>
+  return `<section class="hero"><div><h1 class="hero-brand"><img src="kudos-hero.svg?v=brand-colours-1" alt="KUDOS — Human Performance Optimisation" width="1700" height="495"></h1><p>Team challenges built around the factors that shape performance.</p><span class="strap">READY TO LEAD • READY TO FIGHT • READY TO WIN</span></div></section>
   <div class="section-title"><h2>${esc(teamName(team))} overview</h2><p>${state.mode==='demo'?'Demo mode – ready for Supabase':'Live shared data'}</p></div>
   <div class="grid four">${kudosStatusCard(p?.id)}
   <div class="card metric"><div class="label">Team KUDOS score</div><div class="value">${fmt(teamScore(team))}</div><div class="sub">Combined individual contribution</div></div>

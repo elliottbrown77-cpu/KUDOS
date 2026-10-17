@@ -93,7 +93,7 @@
         : false;
       if (previewHandled) return;
 
-      await import('./app.js?v=contribution-followups-3-brand-colours-1');
+      await import('./app.js?v=contribution-followups-3-brand-colours-1-banner-copy-1');
       await import('./profile-team-first.js?v=team-first-1');
       await import('./home-challenges.js?v=home-all-1');
       await import('./challenge-teams.js?v=team-selector-2');
@@ -188,7 +188,7 @@
 
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./service-worker.js?v=brand-colours-1', { scope: './', updateViaCache: 'none' })
+        navigator.serviceWorker.register('./service-worker.js?v=banner-copy-1', { scope: './', updateViaCache: 'none' })
           .catch(err => console.error('KUDOS service worker registration failed', err));
       });
     }

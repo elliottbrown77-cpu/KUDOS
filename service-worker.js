@@ -1,4 +1,4 @@
-const CACHE = 'kudos-v17-brand-colours';
+const CACHE = 'kudos-v18-banner-copy';
 const STATIC_ASSETS = [
   './hero-merlin.png',
   './chf-crest.png',
