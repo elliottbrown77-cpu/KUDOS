@@ -1,16 +1,23 @@
-const CACHE = 'kudos-v15-push-diagnostics';
+const CACHE = 'kudos-v16-hex-token-branding';
 const STATIC_ASSETS = [
   './hero-merlin.png',
   './chf-crest.png',
   './845-crest.png',
   './846-crest.png',
   './847-crest.png',
-  './manifest.webmanifest?v=3',
+  './manifest.webmanifest?v=hex-token-1',
+  './kudos-app-192-v3.png',
+  './kudos-app-512-v3.png',
+  './kudos-maskable-512-v3.png',
+  './apple-touch-icon-v3.png',
+  './favicon-32-v3.png',
+  './favicon.ico?v=hex-token-1',
   './kudos-app-192-v2.png',
   './kudos-app-512-v2.png',
   './apple-touch-icon-v2.png',
-  './kudos-icon.svg',
-  './kudos-header.svg'
+  './kudos-icon.svg?v=hex-token-1',
+  './kudos-header.svg?v=hex-token-1',
+  './kudos-logo.svg?v=hex-token-1'
 ];
 
 self.addEventListener('install', event => {
@@ -85,8 +92,8 @@ self.addEventListener('push', event => {
   const title = data.title || 'KUDOS progress reminder';
   const options = {
     body: data.body || 'Time to update your KUDOS progress.',
-    icon: data.icon || '/kudos-app-192-v2.png',
-    badge: data.badge || '/kudos-app-192-v2.png',
+    icon: data.icon || '/kudos-app-192-v3.png',
+    badge: data.badge || '/kudos-app-192-v3.png',
     tag: data.tag || 'kudos-progress-reminder',
     renotify: false,
     data: data.data || { url: '/?kudos=log' }
