@@ -552,7 +552,7 @@ function kudosStatusCard(profileId){
 function header(){
   const p=currentProfile();
   const rank=p?kudosRanking(p.id):null;
-  return `<header class="topbar"><div class="brand"><img class="kudos-brand-symbol" src="kudos-header.svg?v=hex-token-1" alt="KUDOS K plus token" width="48" height="48"><div><strong>KUDOS</strong><small>CHF Human Performance</small></div></div>
+  return `<header class="topbar"><div class="brand"><img class="kudos-brand-symbol" src="kudos-header.svg?v=brand-colours-1" alt="KUDOS K plus token" width="48" height="48"><div><strong>KUDOS</strong><small>CHF Human Performance</small></div></div>
   <button class="profile-chip" data-action="profile"><div>${esc(p?.name||'Select profile')}</div><span>${esc(p?teamName(p.team_id):'')}${rank?` • ${esc(rank.tag)}`:''}</span></button></header>`;
 }
 function nav(){
@@ -608,7 +608,7 @@ function contributionQuickActions(home=false){
 
 function homeView(){
   const p=currentProfile(), team=p?.team_id || state.teamFilter, challenges=activeTeamChallenges(team), avg=teamAverage(team), cov=psfCoverage(team);
-  return `<section class="hero"><div><h1 class="hero-brand"><img src="kudos-logo.svg?v=hex-token-1" alt="KUDOS — Human Performance Optimisation. Ready to lead, ready to fight, ready to win." width="1700" height="640"></h1><p>Team challenges built around the factors that shape performance. Small actions. Better performance. Challenge progress tracks the real measure, while KUDOS points reward the value of the contribution.</p></div></section>
+  return `<section class="hero"><div><h1 class="hero-brand"><img src="kudos-hero.svg?v=brand-colours-1" alt="KUDOS — Human Performance Optimisation" width="1700" height="495"></h1><p>Team challenges built around the factors that shape performance. Small actions. Better performance. Challenge progress tracks the real measure, while KUDOS points reward the value of the contribution.</p><span class="strap">READY TO LEAD • READY TO FIGHT • READY TO WIN</span></div></section>
   <div class="section-title"><h2>${esc(teamName(team))} overview</h2><p>${state.mode==='demo'?'Demo mode – ready for Supabase':'Live shared data'}</p></div>
   <div class="grid four">${kudosStatusCard(p?.id)}
   <div class="card metric"><div class="label">Team KUDOS score</div><div class="value">${fmt(teamScore(team))}</div><div class="sub">Combined individual contribution</div></div>

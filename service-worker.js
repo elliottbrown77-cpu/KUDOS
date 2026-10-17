@@ -1,4 +1,4 @@
-const CACHE = 'kudos-v16-hex-token-branding';
+const CACHE = 'kudos-v17-brand-colours';
 const STATIC_ASSETS = [
   './hero-merlin.png',
   './chf-crest.png',
@@ -16,8 +16,9 @@ const STATIC_ASSETS = [
   './kudos-app-512-v2.png',
   './apple-touch-icon-v2.png',
   './kudos-icon.svg?v=hex-token-1',
-  './kudos-header.svg?v=hex-token-1',
-  './kudos-logo.svg?v=hex-token-1'
+  './kudos-header.svg?v=brand-colours-1',
+  './kudos-logo.svg?v=hex-token-1',
+  './kudos-hero.svg?v=brand-colours-1'
 ];
 
 self.addEventListener('install', event => {
