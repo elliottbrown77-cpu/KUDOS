@@ -25,7 +25,14 @@ const state = {
 };
 
 const uid = (prefix='ID') => `${prefix}-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2,6).toUpperCase()}`;
-const today = () => new Date().toISOString().slice(0,10);
+// Weekly participation is measured on the UK calendar, including across BST transitions.
+const today = () => {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/London', year: 'numeric', month: '2-digit', day: '2-digit'
+  }).formatToParts(new Date());
+  const values = Object.fromEntries(parts.map(p => [p.type, p.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+};
 const esc = (s='') => String(s).replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#039;','"':'&quot;'}[c]));
 const fmt = n => Number(n || 0).toLocaleString('en-GB', {maximumFractionDigits:2});
 const pct = n => `${(Number(n || 0) * 100).toFixed(Number(n||0) < .01 ? 2 : 1)}%`;
@@ -68,7 +75,7 @@ function loadDemo(){
 function saveDemo(){ if(state.mode==='demo') localStorage.setItem('kudos_demo_data',JSON.stringify(state.data)); }
 
 async function loadSupabase(){
-  const [teams,profiles,challenges,psfs,challengePsfs,challengeProgress,profileTotals,profileScores,teamScores,progressHistory,progressEntryFeed,achievementTotals,weeklyActivity,weeklyPsfEngagement] = await Promise.all([
+  const [teams,profiles,challenges,psfs,challengePsfs,challengeProgress,profileTotals,profileScores,teamScores,progressHistory,progressEntryFeed,achievementTotals,weeklyActivity,weeklyPsfEngagement,currentWeekHistory] = await Promise.all([
     supabase.from('teams').select('*').order('name'),
     supabase.from('profiles').select('*').eq('active',true).order('name'),
     supabase.from('challenges').select('*').eq('active',true).order('start_date'),
@@ -83,9 +90,14 @@ async function loadSupabase(){
     supabase.from('progress_entry_feed').select('*').order('entry_date',{ascending:false}).order('created_at',{ascending:false}),
     supabase.from('profile_achievement_totals').select('*'),
     supabase.from('profile_weekly_activity').select('*').order('week_start'),
-    supabase.from('profile_weekly_psf_engagement').select('*').order('week_start')
+    // These tables grow every week; fetching the whole PSF table exceeded the 1,000-row API cap.
+    supabase.from('profile_weekly_psf_engagement').select('*').eq('week_start',weekStartISO()),
+    // Load current-week challenge details separately so the PSF source labels cannot be
+    // dropped by the historical progress feed's own 1,000-row API cap.
+    supabase.from('progress_history').select('challenge_id,profile_id,entry_date,daily_value')
+      .gte('entry_date',weekStartISO()).lt('entry_date',shiftWeek(weekStartISO(),1))
   ]);
-  const err=[teams,profiles,challenges,psfs,challengePsfs,challengeProgress,profileTotals,profileScores,teamScores,progressHistory,progressEntryFeed,achievementTotals,weeklyActivity,weeklyPsfEngagement].find(x=>x.error);
+  const err=[teams,profiles,challenges,psfs,challengePsfs,challengeProgress,profileTotals,profileScores,teamScores,progressHistory,progressEntryFeed,achievementTotals,weeklyActivity,weeklyPsfEngagement,currentWeekHistory].find(x=>x.error);
   if(err?.error) throw err.error;
   const psfMap = Object.fromEntries(psfs.data.map(x=>[x.id,x.name]));
   const cPsfs = {};
@@ -106,6 +118,7 @@ async function loadSupabase(){
     achievementTotals:achievementTotals.data||[],
     weeklyActivity:weeklyActivity.data||[],
     weeklyPsfEngagement:weeklyPsfEngagement.data||[],
+    currentWeekHistory:currentWeekHistory.data||[],
     progress:[], recognition:[], innovation:[], safety:[]
   };
 }
@@ -290,7 +303,7 @@ function individualPsfEngagement(profileId){
 
   // Work out which current-week challenge contributions created each PSF.
   const challengeSources={};
-  (state.data?.progressHistory||[])
+  (state.data?.currentWeekHistory||[])
     .filter(x=>x.profile_id===profileId && String(x.entry_date||'')>=currentWeek && Number(x.daily_value||0)>0)
     .forEach(x=>{
       const challenge=challengeById(x.challenge_id);
