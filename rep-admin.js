@@ -1982,6 +1982,11 @@ if (!READY) {
                 </select>
               </div>` : ''}
           </div>
+          ${isGlobalAdmin ? `<div class="card rep-tool-card" style="display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;border-color:#d8c18c">
+            <div><h3 style="margin:0 0 5px">Weekly engagement briefing</h3>
+              <div class="help">Thursday–Wednesday team participation, challenge engagement, weekly leaders and suggested actions. Updated every Thursday morning.</div></div>
+            <a class="btn navy" href="./engagement.html" target="_blank" rel="noopener noreferrer">Open meeting display</a>
+          </div>` : ''}
           ${isGlobalAdmin ? renderPlatformOrganisationSection(platformData, teams) : ''}
           ${renderTeamNamesSection(teams, ctx, teamId, isGlobalAdmin)}
           ${renderChallengeSection(data, mode === 'admin', isGlobalAdmin)}
