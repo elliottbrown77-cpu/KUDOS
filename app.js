@@ -586,7 +586,14 @@ function header(){
 }
 function nav(){
   const items=[['home','⌂','Home'],['challenges','◎','Challenges'],['log','＋','Log'],['progress','↗','Progress'],['reports','▥','Reports'],['contribute','★','Contribute'],['rep','⚙','Rep']];
-  return `<nav class="bottom-nav">${items.map(([v,i,l])=>`<button class="nav-btn ${state.view===v?'active':''}" data-view="${v}"><b>${i}</b>${l}</button>`).join('')}</nav>`;
+  // Workspace Admins get a direct, always-visible route to the Thursday briefing.
+  // It is a normal link, so it works in mobile PWAs as well as desktop browsers.
+  const weeklyEnabled=state.mode==='supabase' && Boolean(state.authUser)
+    && (isFullAdmin() || (state.workspaceAccess||[]).some(a=>a.role==='workspace_admin' && a.active!==false));
+  const weeklyLink=weeklyEnabled
+    ? '<a class="nav-btn weekly-nav-btn" href="./engagement.html" aria-label="Weekly Engagement report"><b>▤</b>Weekly</a>'
+    : '';
+  return `<nav class="bottom-nav ${weeklyEnabled?'with-weekly':''}" aria-label="KUDOS main menu">${items.map(([v,i,l])=>`<button class="nav-btn ${state.view===v?'active':''}" data-view="${v}"><b>${i}</b>${l}</button>`).join('')}${weeklyLink}</nav>`;
 }
 function crests(){return `<div class="crest-row">${[['chf-crest.png','CHF'],['845-crest.png','845 NAS'],['846-crest.png','846 NAS'],['847-crest.png','847 NAS']].map(([f,l])=>`<div><img src="${f}" alt="${l}"><div class="crest-label">${l}</div></div>`).join('')}</div>`}
 function progressCard(c,profileId=state.profileId){

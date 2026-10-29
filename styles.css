@@ -30,6 +30,12 @@ main{max-width:1120px;margin:0 auto;padding:18px 16px 40px}
 .actions{display:flex;gap:8px;flex-wrap:wrap}
 .bottom-nav{position:fixed;left:50%;bottom:10px;transform:translateX(-50%);z-index:40;width:min(720px,calc(100% - 20px));background:rgba(7,23,37,.97);border:1px solid rgba(255,255,255,.1);border-radius:22px;padding:8px;display:grid;grid-template-columns:repeat(7,1fr);box-shadow:0 12px 30px rgba(0,0,0,.25)}
 .nav-btn{border:0;background:transparent;color:#9fb0bb;border-radius:14px;padding:8px 4px;font-size:10px;font-weight:750}.nav-btn b{display:block;font-size:19px;line-height:1.2}.nav-btn.active{background:var(--green);color:#fff}
+/* The Admin-only Weekly report is an eighth primary navigation item. */
+.bottom-nav.with-weekly{grid-template-columns:repeat(8,minmax(0,1fr));width:min(820px,calc(100% - 20px))}
+.bottom-nav .nav-btn{text-decoration:none;display:flex;flex-direction:column;justify-content:center;align-items:center;min-width:0;text-align:center}
+.bottom-nav .weekly-nav-btn{color:var(--sand)}
+.bottom-nav .weekly-nav-btn:hover,.bottom-nav .weekly-nav-btn:focus-visible{background:var(--green2);color:#fff}
+@media(max-width:480px){.bottom-nav.with-weekly{width:calc(100% - 12px);gap:0;padding:6px 3px}.bottom-nav.with-weekly .nav-btn{padding:8px 1px;font-size:9px}.bottom-nav.with-weekly .nav-btn b{font-size:18px}}
 .form-card{max-width:720px;margin:0 auto}.field{display:flex;flex-direction:column;gap:6px;margin-bottom:14px}.field label{font-size:12px;font-weight:800;color:var(--navy)}.field input,.field select,.field textarea{width:100%;border:1px solid #cfd7d1;background:#fff;border-radius:12px;padding:12px 13px;color:var(--ink)}.field textarea{min-height:100px;resize:vertical}.help{font-size:11px;color:var(--muted)}
 .segmented{display:flex;background:#e8ece8;border-radius:14px;padding:4px;gap:4px}.segmented button{flex:1;border:0;border-radius:10px;padding:9px;background:transparent;color:var(--muted);font-weight:800}.segmented button.active{background:#fff;color:var(--navy);box-shadow:0 2px 10px rgba(0,0,0,.08)}
 .table-wrap{overflow:auto;background:#fff;border:1px solid var(--line);border-radius:var(--radius)}table{border-collapse:collapse;width:100%;min-width:720px}th,td{text-align:left;padding:12px;border-bottom:1px solid #e7ebe7;font-size:12px}th{background:var(--navy);color:#fff;position:sticky;top:0}tr:last-child td{border-bottom:0}
