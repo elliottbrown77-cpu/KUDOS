@@ -1,4 +1,4 @@
-const KUDOS_REP_TOOLS_VERSION = '2026-11-01.2';
+const KUDOS_REP_TOOLS_VERSION = '2026-11-01.3';
 
 const CFG = window.KUDOS_CONFIG || {};
 const SUPABASE_KEY = CFG.SUPABASE_PUBLISHABLE_KEY || CFG.SUPABASE_ANON_KEY || '';
@@ -219,7 +219,18 @@ if (!READY) {
 
   // One active administration section at a time; preserve all existing controls
   // in the DOM so their established event handlers continue to work unchanged.
-  function kudosAdminSections(globalAdmin, accountAdmin) {
+  function kudosAdminSections(globalAdmin, accountAdmin, repMode=false) {
+    if(repMode) {
+      // Only the controls that were already available in Rep mode.
+      return [
+        {id:'overview',label:'Overview',icon:'⌂',description:'Choose a team management area'},
+        {id:'teams',label:'Teams',icon:'♧',description:'Your team name and identity'},
+        {id:'challenges',label:'Challenges',icon:'◎',description:'Your team challenges'},
+        {id:'moderation',label:'Moderation',icon:'⚑',description:'Review and moderate your team entries'},
+        {id:'contributions',label:'Contributions',icon:'★',description:'Safety, Innovation and Recognition updates and Excel exports'},
+        {id:'points',label:'KUDOS points',icon:'＋',description:'Team-scoped audited point deductions'}
+      ];
+    }
     const tabs=[
       {id:'overview',label:'Overview',icon:'⌂',description:'Choose a management area'},
       ...(globalAdmin?[{id:'structure',label:'Organisation',icon:'▦',description:'Organisation hierarchy and scoped platform roles'}]:[]),
@@ -244,7 +255,7 @@ if (!READY) {
       ${back}${content}</section>`;
   }
 
-  function kudosAdminOverview(tabs, globalAdmin) {
+  function kudosAdminOverview(tabs, globalAdmin, repMode=false) {
     const shortcuts=tabs.filter(t=>t.id!=='overview').map(tab=>`
       <button class="kudos-admin-shortcut" type="button" data-kudos-admin-tab="${tab.id}">
         <span class="kudos-admin-shortcut-icon" aria-hidden="true">${tab.icon}</span>
@@ -253,8 +264,8 @@ if (!READY) {
       </button>`).join('');
     return `
       <div class="card kudos-admin-intro">
-        <h3>Administration overview</h3>
-        <p>Select a management area below. Use Back to overview to choose another section, without a second menu.</p>
+        <h3>${repMode ? 'Performance Rep overview' : 'Administration overview'}</h3>
+        <p>Select an area below to manage ${repMode ? 'your team' : 'KUDOS'}. Use Back to overview to choose another section.</p>
         <div class="kudos-admin-shortcut-grid">${shortcuts}</div>
         ${globalAdmin?`<a class="btn navy kudos-admin-weekly-link" href="./engagement.html">Open Thursday weekly engagement report</a>`:''}
       </div>`;
@@ -2052,6 +2063,7 @@ if (!READY) {
           : [null, data, null, data, null];
         const scopedContributionData=await attachContributionFollowups(contributionData,isGlobalAdmin?null:data.profiles.map(p=>p.id));
         const selectedTeam = teams.find(t => t.id === teamId);
+        const sectionTiles = kudosAdminSections(isGlobalAdmin,Boolean(adminData),mode === 'rep');
 
         root.innerHTML = `
           ${actingModeBar(ctx, profile, teams, mode, repTeamId)}
@@ -2070,18 +2082,18 @@ if (!READY) {
                 </select>
               </div>` : ''}
           </div>
-          ${mode==='admin'?kudosAdminPanel('overview',kudosAdminOverview(kudosAdminSections(isGlobalAdmin,Boolean(adminData)),isGlobalAdmin)):''}
+          ${kudosAdminPanel('overview',kudosAdminOverview(sectionTiles,isGlobalAdmin,mode==='rep'))}
           ${isGlobalAdmin ? kudosAdminPanel('structure',renderPlatformOrganisationSection(platformData, teams)) : ''}
-          ${mode==='admin'?kudosAdminPanel('teams',renderTeamNamesSection(teams,ctx,teamId,isGlobalAdmin)):renderTeamNamesSection(teams,ctx,teamId,isGlobalAdmin)}
-          ${mode==='admin'?kudosAdminPanel('challenges',renderChallengeSection(data,true,isGlobalAdmin)):renderChallengeSection(data,false,false)}
-          ${mode==='admin'?kudosAdminPanel('moderation',renderEntrySection(moderationData,teams,isGlobalAdmin)):renderEntrySection(moderationData,teams,false)}
-          ${mode==='admin'?kudosAdminPanel('contributions',renderContributionQueues(scopedContributionData,teams,isGlobalAdmin)):renderContributionQueues(scopedContributionData,teams,false)}
-          ${mode==='admin'?kudosAdminPanel('points',renderPointsSection(data,true)):renderPointsSection(data,false)}
+          ${kudosAdminPanel('teams',renderTeamNamesSection(teams,ctx,teamId,isGlobalAdmin))}
+          ${kudosAdminPanel('challenges',renderChallengeSection(data,mode==='admin',isGlobalAdmin))}
+          ${kudosAdminPanel('moderation',renderEntrySection(moderationData,teams,isGlobalAdmin))}
+          ${kudosAdminPanel('contributions',renderContributionQueues(scopedContributionData,teams,isGlobalAdmin))}
+          ${kudosAdminPanel('points',renderPointsSection(data,mode==='admin'))}
           ${mode==='admin'?kudosAdminPanel('profiles',renderProfileManagementSection(globalProfileData||data,teams,isGlobalAdmin)):''}
           ${adminData ? kudosAdminPanel('access',renderAccessAdminSection(ctx,teams,adminData,platformData)) : ''}
         `;
         main.appendChild(root);
-        if(mode==='admin')bindKudosAdminOverview(root,kudosAdminSections(isGlobalAdmin,Boolean(adminData)));
+        bindKudosAdminOverview(root,sectionTiles);
         bindContributionUpdates(root,scopedContributionData,teams,isGlobalAdmin);
 
         document.getElementById('kudos-rep-tools-team')?.addEventListener('change', e => {
