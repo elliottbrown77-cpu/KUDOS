@@ -1,4 +1,4 @@
-const KUDOS_REP_TOOLS_VERSION = '2026-10-13.5';
+const KUDOS_REP_TOOLS_VERSION = '2026-11-01.1';
 
 const CFG = window.KUDOS_CONFIG || {};
 const SUPABASE_KEY = CFG.SUPABASE_PUBLISHABLE_KEY || CFG.SUPABASE_ANON_KEY || '';
@@ -215,6 +215,97 @@ if (!READY) {
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/^-+|-+$/g, '')
       .slice(0, 80);
+  }
+
+  // One active administration section at a time; preserve all existing controls
+  // in the DOM so their established event handlers continue to work unchanged.
+  function kudosAdminSections(globalAdmin, accountAdmin) {
+    const tabs=[
+      {id:'overview',label:'Overview',icon:'⌂',description:'Choose a management area'},
+      ...(globalAdmin?[{id:'structure',label:'Organisation',icon:'▦',description:'Organisation hierarchy and scoped platform roles'}]:[]),
+      {id:'teams',label:'Teams',icon:'♧',description:'Team names and identities'},
+      {id:'challenges',label:'Challenges',icon:'◎',description:'Create, edit and remove challenges'},
+      {id:'moderation',label:'Moderation',icon:'⚑',description:'Review, edit and delete logged entries'},
+      {id:'contributions',label:'Contributions',icon:'★',description:'Safety, Innovation and Recognition follow-ups and exports'},
+      {id:'points',label:'KUDOS points',icon:'＋',description:'Audited point additions and deductions'},
+      {id:'profiles',label:'Profiles',icon:'♙',description:'Find and manage member profiles'},
+      ...(accountAdmin?[{id:'access',label:'Access',icon:'⚿',description:'Management accounts, permissions and audit'}]:[])
+    ];
+    return tabs;
+  }
+
+  function kudosAdminMenu(tabs) {
+    return `
+      <div class="kudos-admin-navigation" id="kudos-admin-navigation">
+        <div class="kudos-admin-navigation-label">ADMINISTRATION MENU <span>Choose a section to manage</span></div>
+        <div class="kudos-admin-tabs" role="tablist" aria-label="Administrator sections">
+          ${tabs.map(tab=>`<button type="button" class="kudos-admin-tab" id="kudos-admin-tab-${tab.id}"
+            data-kudos-admin-tab="${tab.id}" role="tab"
+            aria-controls="kudos-admin-panel-${tab.id}" aria-selected="false" tabindex="-1">
+            <span class="kudos-admin-tab-icon" aria-hidden="true">${tab.icon}</span>${esc(tab.label)}
+          </button>`).join('')}
+        </div>
+      </div>
+    `;
+  }
+
+  function kudosAdminPanel(id, content) {
+    return `<section class="kudos-admin-panel" id="kudos-admin-panel-${id}" data-kudos-admin-panel="${id}"
+      role="tabpanel" aria-labelledby="kudos-admin-tab-${id}" hidden>${content}</section>`;
+  }
+
+  function kudosAdminOverview(tabs, globalAdmin) {
+    const shortcuts=tabs.filter(t=>t.id!=='overview').map(tab=>`
+      <button class="kudos-admin-shortcut" type="button" data-kudos-admin-tab="${tab.id}">
+        <span class="kudos-admin-shortcut-icon" aria-hidden="true">${tab.icon}</span>
+        <span><strong>${esc(tab.label)}</strong><small>${esc(tab.description)}</small></span>
+        <span class="kudos-admin-shortcut-chevron" aria-hidden="true">›</span>
+      </button>`).join('');
+    return `
+      <div class="card kudos-admin-intro">
+        <h3>Administration overview</h3>
+        <p>Choose a section above, or use one of the shortcuts below. Only the section you select is displayed, keeping the administration screen easier to navigate.</p>
+        <div class="kudos-admin-shortcut-grid">${shortcuts}</div>
+        ${globalAdmin?`<a class="btn navy kudos-admin-weekly-link" href="./engagement.html">Open Thursday weekly engagement report</a>`:''}
+      </div>`;
+  }
+
+  function bindKudosAdminMenu(root, tabs) {
+    const tabIds=new Set(tabs.map(x=>x.id));
+    const storageKey='kudos_admin_active_section_v1';
+    let saved='';
+    try{saved=sessionStorage.getItem(storageKey)||'';}catch{}
+    const menu=root.querySelector('#kudos-admin-navigation');
+    if(!menu)return;
+
+    const activate=(key,scroll=false)=>{
+      const next=tabIds.has(key)?key:'overview';
+      root.querySelectorAll('[data-kudos-admin-panel]').forEach(panel=>{
+        panel.hidden=panel.dataset.kudosAdminPanel!==next;
+      });
+      root.querySelectorAll('.kudos-admin-tabs [data-kudos-admin-tab]').forEach(button=>{
+        const active=button.dataset.kudosAdminTab===next;
+        button.classList.toggle('active',active);
+        button.setAttribute('aria-selected',String(active));
+        button.tabIndex=active?0:-1;
+      });
+      try{sessionStorage.setItem(storageKey,next);}catch{}
+      if(scroll && menu.scrollIntoView)menu.scrollIntoView({behavior:'smooth',block:'start'});
+    };
+    root.querySelectorAll('[data-kudos-admin-tab]').forEach(button=>{
+      button.addEventListener('click',()=>activate(button.dataset.kudosAdminTab,true));
+      if(button.closest('.kudos-admin-tabs'))button.addEventListener('keydown',event=>{
+        if(!['ArrowRight','ArrowLeft','Home','End'].includes(event.key))return;
+        event.preventDefault();
+        const ids=tabs.map(t=>t.id);
+        const i=ids.indexOf(button.dataset.kudosAdminTab);
+        const next=event.key==='Home'?0:event.key==='End'?ids.length-1:
+          (i+(event.key==='ArrowRight'?1:-1)+ids.length)%ids.length;
+        activate(ids[next]);
+        root.querySelector('#kudos-admin-tab-'+ids[next])?.focus();
+      });
+    });
+    activate(saved);
   }
 
   function renderPlatformOrganisationSection(platform, teams) {
@@ -529,6 +620,33 @@ if (!READY) {
     style.textContent = `
       #kudos-rep-tools{margin-top:24px}
       #kudos-rep-tools .rep-tools-head{display:flex;gap:12px;align-items:flex-end;justify-content:space-between;flex-wrap:wrap}
+      #kudos-rep-tools [hidden]{display:none!important}
+      #kudos-rep-tools .kudos-admin-navigation{position:sticky;top:63px;z-index:20;margin:14px 0 18px;padding:12px 14px;background:rgba(245,246,242,.98);border:1px solid var(--line);border-radius:15px;box-shadow:0 6px 18px rgba(12,35,56,.09);backdrop-filter:blur(12px);scroll-margin-top:67px}
+      #kudos-rep-tools .kudos-admin-navigation-label{display:flex;justify-content:space-between;gap:8px;align-items:center;color:var(--navy);font-weight:900;font-size:11px;letter-spacing:.055em;margin:0 2px 10px}
+      #kudos-rep-tools .kudos-admin-navigation-label span{font-size:11px;font-weight:550;letter-spacing:0;color:var(--muted)}
+      #kudos-rep-tools .kudos-admin-tabs{display:flex;gap:6px;overflow-x:auto;overscroll-behavior-x:contain;scrollbar-width:thin;padding:2px 1px 6px}
+      #kudos-rep-tools .kudos-admin-tab{white-space:nowrap;flex:0 0 auto;border:1px solid #d5ddd6;border-radius:10px;background:#fff;color:var(--navy);display:flex;gap:6px;align-items:center;font-weight:800;font-size:12px;padding:10px 12px;min-height:41px}
+      #kudos-rep-tools .kudos-admin-tab.active{background:var(--green);border-color:var(--green);color:#fff;box-shadow:0 3px 9px rgba(67,95,70,.19)}
+      #kudos-rep-tools .kudos-admin-tab:hover:not(.active){background:var(--soft)}
+      #kudos-rep-tools .kudos-admin-tab:focus-visible,#kudos-rep-tools .kudos-admin-shortcut:focus-visible{outline:3px solid var(--sand);outline-offset:2px}
+      #kudos-rep-tools .kudos-admin-tab-icon{font-size:16px;line-height:1}
+      #kudos-rep-tools .kudos-admin-panel{min-width:0}
+      #kudos-rep-tools .kudos-admin-panel>.section-title:first-child{margin-top:16px}
+      #kudos-rep-tools .kudos-admin-intro{margin-top:12px}
+      #kudos-rep-tools .kudos-admin-intro h3{margin:0 0 8px;color:var(--navy);font-size:20px}
+      #kudos-rep-tools .kudos-admin-intro p{margin:0 0 15px;color:var(--muted);font-size:13px;line-height:1.5}
+      #kudos-rep-tools .kudos-admin-shortcut-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+      #kudos-rep-tools .kudos-admin-shortcut{display:flex;align-items:center;text-align:left;gap:12px;min-width:0;padding:15px 13px;background:#f8faf8;border:1px solid var(--line);color:var(--navy);border-radius:12px;cursor:pointer}
+      #kudos-rep-tools .kudos-admin-shortcut:hover{border-color:#879f88;background:var(--soft)}
+      #kudos-rep-tools .kudos-admin-shortcut-icon{font-size:23px;color:var(--green);line-height:1}
+      #kudos-rep-tools .kudos-admin-shortcut strong,#kudos-rep-tools .kudos-admin-shortcut small{display:block}
+      #kudos-rep-tools .kudos-admin-shortcut strong{font-size:13px}
+      #kudos-rep-tools .kudos-admin-shortcut small{font-size:11px;color:var(--muted);margin-top:5px;line-height:1.3}
+      #kudos-rep-tools .kudos-admin-shortcut-chevron{margin-left:auto;font-size:24px;color:var(--green)}
+      #kudos-rep-tools .kudos-admin-weekly-link{margin-top:16px;text-decoration:none;display:inline-block}
+      @media(max-width:850px){#kudos-rep-tools .kudos-admin-shortcut-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+      @media(max-width:550px){#kudos-rep-tools .kudos-admin-navigation{top:57px;padding:10px 9px;margin:12px 0 14px}#kudos-rep-tools .kudos-admin-navigation-label span{display:none}#kudos-rep-tools .kudos-admin-tabs{gap:5px}#kudos-rep-tools .kudos-admin-tab{padding:9px 11px;font-size:11px}#kudos-rep-tools .kudos-admin-shortcut-grid{grid-template-columns:1fr}}
+
       #kudos-rep-tools .rep-tools-head .field{min-width:220px;margin:0}
       #kudos-rep-tools .rep-tool-card{margin-top:14px}
       #kudos-rep-tools .admin-scroll-card{display:flex;flex-direction:column;max-height:560px;overflow:hidden}
@@ -1982,21 +2100,19 @@ if (!READY) {
                 </select>
               </div>` : ''}
           </div>
-          ${isGlobalAdmin ? `<div class="card rep-tool-card" style="display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;border-color:#d8c18c">
-            <div><h3 style="margin:0 0 5px">Weekly engagement briefing</h3>
-              <div class="help">Thursday–Wednesday team participation, challenge engagement, weekly leaders and suggested actions. Updated every Thursday morning.</div></div>
-            <a class="btn navy" href="./engagement.html" target="_blank" rel="noopener noreferrer">Open meeting display</a>
-          </div>` : ''}
-          ${isGlobalAdmin ? renderPlatformOrganisationSection(platformData, teams) : ''}
-          ${renderTeamNamesSection(teams, ctx, teamId, isGlobalAdmin)}
-          ${renderChallengeSection(data, mode === 'admin', isGlobalAdmin)}
-          ${renderEntrySection(moderationData, teams, isGlobalAdmin)}
-          ${renderContributionQueues(scopedContributionData, teams, isGlobalAdmin)}
-          ${renderPointsSection(data, mode === 'admin')}
-          ${mode === 'admin' ? renderProfileManagementSection(globalProfileData || data, teams, isGlobalAdmin) : ''}
-          ${adminData ? renderAccessAdminSection(ctx, teams, adminData, platformData) : ''}
+          ${mode==='admin' ? kudosAdminMenu(kudosAdminSections(isGlobalAdmin,Boolean(adminData))) : ''}
+          ${mode==='admin'?kudosAdminPanel('overview',kudosAdminOverview(kudosAdminSections(isGlobalAdmin,Boolean(adminData)),isGlobalAdmin)):''}
+          ${isGlobalAdmin ? kudosAdminPanel('structure',renderPlatformOrganisationSection(platformData, teams)) : ''}
+          ${mode==='admin'?kudosAdminPanel('teams',renderTeamNamesSection(teams,ctx,teamId,isGlobalAdmin)):renderTeamNamesSection(teams,ctx,teamId,isGlobalAdmin)}
+          ${mode==='admin'?kudosAdminPanel('challenges',renderChallengeSection(data,true,isGlobalAdmin)):renderChallengeSection(data,false,false)}
+          ${mode==='admin'?kudosAdminPanel('moderation',renderEntrySection(moderationData,teams,isGlobalAdmin)):renderEntrySection(moderationData,teams,false)}
+          ${mode==='admin'?kudosAdminPanel('contributions',renderContributionQueues(scopedContributionData,teams,isGlobalAdmin)):renderContributionQueues(scopedContributionData,teams,false)}
+          ${mode==='admin'?kudosAdminPanel('points',renderPointsSection(data,true)):renderPointsSection(data,false)}
+          ${mode==='admin'?kudosAdminPanel('profiles',renderProfileManagementSection(globalProfileData||data,teams,isGlobalAdmin)):''}
+          ${adminData ? kudosAdminPanel('access',renderAccessAdminSection(ctx,teams,adminData,platformData)) : ''}
         `;
         main.appendChild(root);
+        if(mode==='admin')bindKudosAdminMenu(root,kudosAdminSections(isGlobalAdmin,Boolean(adminData)));
         bindContributionUpdates(root,scopedContributionData,teams,isGlobalAdmin);
 
         document.getElementById('kudos-rep-tools-team')?.addEventListener('change', e => {
