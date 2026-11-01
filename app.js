@@ -585,7 +585,7 @@ function header(){
   <button class="profile-chip" data-action="profile"><div>${esc(p?.name||'Select profile')}</div><span>${esc(p?teamName(p.team_id):'')}${rank?` • ${esc(rank.tag)}`:''}</span></button></header>`;
 }
 function nav(){
-  const items=[['home','⌂','Home'],['challenges','◎','Challenges'],['log','＋','Log'],['progress','↗','Progress'],['reports','▥','Reports'],['contribute','★','Contribute'],['rep','⚙','Rep']];
+  const items=[['home','⌂','Home'],['challenges','◎','Challenges'],['log','＋','Log'],['progress','↗','Progress'],['reports','▥','Reports'],['contribute','★','Contribute'],['rep','⚙','Admin/ Rep']];
   // Workspace Admins get a direct, always-visible route to the Thursday briefing.
   // It is a normal link, so it works in mobile PWAs as well as desktop browsers.
   const weeklyEnabled=state.mode==='supabase' && Boolean(state.authUser)
