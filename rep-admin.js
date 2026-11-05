@@ -1,4 +1,4 @@
-const KUDOS_REP_TOOLS_VERSION = '2026-11-01.3';
+const KUDOS_REP_TOOLS_VERSION = '2026-11-05.1';
 
 const CFG = window.KUDOS_CONFIG || {};
 const SUPABASE_KEY = CFG.SUPABASE_PUBLISHABLE_KEY || CFG.SUPABASE_ANON_KEY || '';
@@ -1667,7 +1667,7 @@ if (!READY) {
       const role = a?.role || '';
       const teamId = a?.team_id || '';
       const isCurrent = d.auth_user_id === ctx.user.id;
-      return `<tr>
+      return `<tr data-kudos-access-email="${esc(String(d.email||'').toLowerCase())}">
         <td>
           <strong>${esc(d.email)}</strong>
           ${isCurrent?'<div class="access-current-user">Current account</div>':''}
@@ -1719,7 +1719,7 @@ if (!READY) {
         </div>
 
         <h3>Create a Rep or Admin account</h3>
-        <div class="notice">Creates a confirmed KUDOS account immediately using email + password. No invitation email is required. Give the temporary password to the user securely; they can change it later.</div>
+        <div class="notice">Use this form only for a new email address. If the person already has a KUDOS login, find the email under <strong>Access accounts</strong> below, choose <strong>Admin</strong> or <strong>Rep</strong>, then select <strong>Save</strong>. Share new account passwords securely.</div>
         <form id="kudos-access-invite-form" class="admin-invite-form" style="margin-top:14px">
           <div class="field"><label>Email</label><input name="email" type="email" required autocomplete="email" placeholder="name@example.com"></div>
           <div class="field"><label>Temporary password</label><input name="password" type="password" minlength="10" required autocomplete="new-password" placeholder="At least 10 characters"></div>
@@ -1742,11 +1742,16 @@ if (!READY) {
 
       <div class="section-title"><h2>Access accounts</h2><p>Grant, change or revoke KUDOS management access</p></div>
       <div class="card rep-tool-card">
-        <div class="notice">Revoking access removes the KUDOS role but does not delete the person's authentication account. At least one KUDOS administrator is always retained by the database.</div>
+        <div class="notice">To upgrade an existing login, choose its role and select Save. You can also set or reset its password here. Revoking access removes its KUDOS role but not the login.</div>
+        <div class="field" style="margin-top:12px;margin-bottom:0">
+          <label for="kudos-access-search">Find an existing account</label>
+          <input id="kudos-access-search" type="search" autocomplete="off" placeholder="Search by email address" aria-controls="kudos-access-account-rows">
+        </div>
+        <div class="help" id="kudos-access-search-count" aria-live="polite" style="margin:7px 0">Showing ${data.directory.length} accounts</div>
         <div class="table-wrap" style="margin-top:12px">
           <table class="rep-tool-table">
             <thead><tr><th>Email</th><th>Last sign-in</th><th>Role</th><th>Rep team</th><th></th></tr></thead>
-            <tbody>${directoryRows || '<tr><td colspan="5"><div class="empty compact-empty">No access accounts found.</div></td></tr>'}</tbody>
+            <tbody id="kudos-access-account-rows">${directoryRows || '<tr><td colspan="5"><div class="empty compact-empty">No access accounts found.</div></td></tr>'}</tbody>
           </table>
         </div>
       </div>
@@ -1796,6 +1801,26 @@ if (!READY) {
     return true;
   }
 
+  async function explainKudosAccountError(error) {
+    // FunctionsHttpError wraps a Response; error.message omits the JSON error body.
+    const context = error?.context || null;
+    const status = Number(context?.status || 0);
+    let details = '';
+    if (context && typeof context.json === 'function') {
+      try {
+        const body = await (typeof context.clone === 'function' ? context.clone() : context).json();
+        details = String(body?.error || body?.message || '').trim();
+      } catch { /* Fallback to status-specific guidance. */ }
+    }
+    if (status === 409) return new Error(
+      'An account already exists for this email. Find it in Access accounts below, select Admin (or the appropriate role), then Save. Use Set password or Email reset if required.'
+    );
+    if (status === 401) return new Error('Your administrator session has expired. Sign out and back in, then retry.');
+    if (status === 403) return new Error(details || 'Your login does not have permission to create KUDOS accounts.');
+    if (status >= 500) return new Error(details || 'The account service encountered an error. Contact the KUDOS administrator if it persists.');
+    return new Error(details || error?.message || 'The account service could not complete the request.');
+  }
+
   async function createAccessAccount(email, password, role, teamId, organisationId) {
     email = String(email || '').trim().toLowerCase();
     password = String(password || '');
@@ -1819,7 +1844,7 @@ if (!READY) {
       }
     });
 
-    if (error) throw error;
+    if (error) throw await explainKudosAccountError(error);
     if (data?.error) throw new Error(data.error);
     return 'Account created. The user can now sign in with their email address and password.';
   }
@@ -1830,13 +1855,31 @@ if (!READY) {
     const {data, error} = await db.functions.invoke('manage-kudos-account', {
       body: { action: 'set_password', user_id: userId, password }
     });
-    if (error) throw error;
+    if (error) throw await explainKudosAccountError(error);
     if (data?.error) throw new Error(data.error);
   }
 
 
   function bindAccessAdmin(ctx, teams, adminData, root, platformData=null) {
     if (ctx.appUser?.role !== 'admin') return;
+
+    const accountSearch = root.querySelector('#kudos-access-search');
+    const accountRows = [...root.querySelectorAll('tr[data-kudos-access-email]')];
+    const searchCount = root.querySelector('#kudos-access-search-count');
+    const filterAccounts = () => {
+      const needle = String(accountSearch?.value || '').trim().toLowerCase();
+      let visible=0;
+      accountRows.forEach(row => {
+        const match = !needle || row.dataset.kudosAccessEmail.includes(needle);
+        row.hidden = !match;
+        if (match) visible++;
+      });
+      if (searchCount) searchCount.textContent = needle
+        ? `${visible} matching account${visible === 1 ? '' : 's'}`
+        : `Showing ${visible} accounts`;
+    };
+    accountSearch?.addEventListener('input', filterAccounts);
+    filterAccounts();
 
     const inviteRole = document.getElementById('kudos-invite-role');
     const inviteTeam = document.getElementById('kudos-invite-team');
