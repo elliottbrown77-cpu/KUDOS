@@ -1,4 +1,4 @@
-const KUDOS_REP_TOOLS_VERSION = '2026-11-06.7';
+const KUDOS_REP_TOOLS_VERSION = '2026-11-06.8';
 
 const CFG = window.KUDOS_CONFIG || {};
 const SUPABASE_KEY = CFG.SUPABASE_PUBLISHABLE_KEY || CFG.SUPABASE_ANON_KEY || '';
@@ -232,6 +232,7 @@ if (!READY) {
       <div class="card rep-tool-card">
         <h3 style="margin-top:0">Delivery readiness</h3>
         <div id="kudos-notify-readiness" class="notice" aria-live="polite">Checking the email configuration…</div>
+         <button type="button" id="kudos-notify-refresh" class="btn ghost compact" style="margin-top:10px">Refresh live recipients and delivery status</button>
         <p class="help" style="margin-top:9px">Emails now include the complete submission, including names, narratives and references. The email is HTML with KUDOS branding and a full plain-text alternative. Test emails use clearly marked example details. Flight Safety reporting must still follow authorised procedures.</p>
       </div>
       <div class="card rep-tool-card">
@@ -266,10 +267,17 @@ if (!READY) {
     const saveStatus=root.querySelector('#kudos-notify-save-status');
     const lastStatus=root.querySelector('#kudos-notify-last-status');
     const saveBtn=root.querySelector('#kudos-notify-save');
+    const refreshBtn=root.querySelector('#kudos-notify-refresh');
     const types=['safety','rewards','innovation'];
     const legacy=Object.fromEntries((legacyRoutes||[]).map(x=>[x.contribution_type,x.recipients||[]]));
     const field=type=>root.querySelector('[data-kudos-route="'+type+'"]');
     let ready=false;
+    let hasUnsavedRecipientEdits=false;
+    let lastSuccessfulRefresh=0;
+    let refreshInProgress=false;
+    for(const box of root.querySelectorAll('[data-kudos-route]')){
+      box.addEventListener('input',()=>{hasUnsavedRecipientEdits=true;});
+    }
     const showStatus=(message,error=false)=>{
       if(saveStatus)saveStatus.textContent=(error?'Error: ':'')+message;
     };
@@ -284,9 +292,18 @@ if (!READY) {
     async function request(method,body){
       const {data:{session},error}=await db.auth.getSession();
       if(error||!session?.access_token)throw new Error('Please sign in as Workspace Admin again.');
-      const response=await fetch('/api/contribution-routing',{
-        method,headers:{
+      // Cache-bust each GET: older KUDOS service workers mistakenly cached
+      // authenticated responses and replayed obsolete PAUSED / 1-1-2 values.
+      const endpoint=method==='GET'
+        ? '/api/contribution-routing?live='+encodeURIComponent(String(Date.now()))
+        : '/api/contribution-routing';
+      const response=await fetch(endpoint,{
+        method,
+        cache:'no-store',
+        headers:{
           'authorization':'Bearer '+session.access_token,
+          'cache-control':'no-store',
+          'pragma':'no-cache',
           ...(body?{'content-type':'application/json'}:{})
         },...(body?{body:JSON.stringify(body)}:{})
       });
@@ -334,32 +351,64 @@ if (!READY) {
           esc(statusMessages[smoke.status]||'No confirmed delivery status')+'</div>':'');
       }
     };
-    try{
-      const response=await request('GET');
-      const initial=response.routesSaved?response.routes:legacy;
-      for(const type of types)if(field(type))field(type).value=(initial?.[type]||[]).join('\n');
-      const counts=types.map(type=>(initial?.[type]||[]).length);
-      if(response.recipientsReconciled)
-        showStatus('Previously missing recipients restored to live routing. Flight Safety: '+
-          counts[0]+', Recognition: '+counts[1]+', Innovation: '+counts[2]+'.');
-      else if(!response.routesSaved)
-        showStatus('Existing recipient settings were loaded. Review and select Save to activate these routes.');
-      else
-        showStatus('Live recipients loaded — Flight Safety: '+counts[0]+
-          ', Recognition: '+counts[1]+', Innovation: '+counts[2]+'.');
-      if(saveBtn)saveBtn.disabled=false;
-      display(response);
-    }catch(error){
-      if(readiness)readiness.textContent='Unable to load recipient routing: '+(error.message||error);
-      showStatus('Recipient routing could not be loaded. Refresh or sign in again.',true);
-      return;
+    async function refreshLiveSettings(manual=false){
+      if(!root.isConnected || refreshInProgress)return;
+      if(hasUnsavedRecipientEdits){
+        if(!manual)return;
+        if(!window.confirm('Discard unsaved edits and reload the latest recipients?'))return;
+      }
+      refreshInProgress=true;
+      if(refreshBtn){
+        refreshBtn.disabled=true;
+        refreshBtn.textContent='Refreshing live settings…';
+      }
+      try{
+        const response=await request('GET');
+        const initial=response.routesSaved?response.routes:legacy;
+        for(const type of types)
+          if(field(type))field(type).value=(initial?.[type]||[]).join('\n');
+        hasUnsavedRecipientEdits=false;
+        lastSuccessfulRefresh=Date.now();
+        const counts=types.map(type=>(initial?.[type]||[]).length);
+        display(response);
+        if(saveBtn)saveBtn.disabled=false;
+        showStatus('Confirmed live server recipients — Flight Safety: '+counts[0]+
+          ', Recognition: '+counts[1]+', Innovation: '+counts[2]+
+          '. Delivery: '+(response.deliveryEnabled?'READY':'PAUSED')+'.');
+      }catch(error){
+        if(readiness)readiness.textContent='Unable to load live notification routing: '+(error.message||error);
+        showStatus('Live settings could not be loaded: '+(error.message||error)+
+          '. Use Refresh live recipients to retry.',true);
+      }finally{
+        refreshInProgress=false;
+        if(refreshBtn){
+          refreshBtn.disabled=false;
+          refreshBtn.textContent='Refresh live recipients and delivery status';
+        }
+      }
     }
+    refreshBtn?.addEventListener('click',()=>{void refreshLiveSettings(true);});
+    const onReturn=()=>{
+      if(!root.isConnected){
+        window.removeEventListener('focus',onReturn);
+        document.removeEventListener('visibilitychange',onReturn);
+        return;
+      }
+      if(!document.hidden && Date.now()-lastSuccessfulRefresh>10000)
+        void refreshLiveSettings(false);
+    };
+    window.addEventListener('focus',onReturn);
+    document.addEventListener('visibilitychange',onReturn);
+    void refreshLiveSettings(false);
+
     form.addEventListener('submit',async event=>{
       event.preventDefault();
       try{
         if(saveBtn)saveBtn.disabled=true;
         const routes=routeData();
         const saved=await request('POST',{action:'save',routes});
+        hasUnsavedRecipientEdits=false;
+        lastSuccessfulRefresh=Date.now();
         display(saved);
         showStatus('Recipients saved for future verified contributions.'+
           (saved.deliveryEnabled?' Sending is enabled.':' Sending remains disabled until an approved SMTP service is configured.'));

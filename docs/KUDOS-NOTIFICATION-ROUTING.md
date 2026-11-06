@@ -152,3 +152,34 @@ The automatic sender continues to require the independent production-only
 `KUDOS_EMAIL_DELIVERY_ENABLED=true` flag and SMTP configuration. Keep
 the extra runtime flag isolated to production, rather than exposing sender
 credentials or production routing in browser code.
+
+## Root-cause fix for persistent stale recipient UI — 6 November 2026
+
+The remaining discrepancy was caused by **service-worker GET caching**,
+not the Supabase database or the Netlify routing store. The KUDOS
+service-worker's fetch handler cached *all* same-origin GET responses except
+the app shell and scripts, including authenticated GET requests to
+`/api/contribution-routing`. It replayed an obsolete response with
+`deliveryEnabled:false` and recipient counts 1/1/2, even after the live
+global Netlify Blobs routing was verified as 5/4/5 and production email
+delivery was enabled.
+
+Changes:
+- Service worker cache version advanced to v20 to delete the old CacheStorage
+  cache (including any incorrectly stored authenticated API responses).
+- Service worker now ignores all `/api/`, `/.netlify/`, `/auth/` and any
+  request with an Authorization header; caching is restricted to a strict
+  allow-list of harmless static assets.
+- The Notifications API GET explicitly uses `cache:'no-store'`, no-cache
+  headers and a unique query parameter to bypass both old browser caches
+  and an already-running legacy service worker.
+- The Admin UI now has a **Refresh live recipients and delivery status**
+  button, refreshes when the tab regains focus or visibility, and displays
+  server-confirmed recipient counts and readiness. Unsaved edits are
+  protected from automatic overwrite.
+- Service-worker registration URLs and Admin script version were bumped
+  together to make the fix take effect on a fresh page load.
+
+The server-side routing and email sender remain unchanged. A verified live
+server diagnostic established 5 Flight Safety, 4 Recognition and 5 Innovation
+recipients and `KUDOS_EMAIL_DELIVERY_ENABLED=true`.

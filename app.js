@@ -1556,5 +1556,5 @@ function bind(){
   document.getElementById('modal')?.addEventListener('click',e=>{if(e.target.id==='modal' && currentProfile())closeModal()});
 }
 
-if('serviceWorker' in navigator) navigator.serviceWorker.register('./service-worker.js').catch(()=>{});
+if('serviceWorker' in navigator) navigator.serviceWorker.register('./service-worker.js?v=static-only-v20-20261106', {updateViaCache:'none'}).catch(()=>{});
 refresh();

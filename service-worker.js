@@ -1,4 +1,4 @@
-const CACHE = 'kudos-v19-live-only-20261106';
+const CACHE = 'kudos-v20-static-only-20261106';
 const STATIC_ASSETS = [
   './hero-merlin.png',
   './chf-crest.png',
@@ -21,6 +21,12 @@ const STATIC_ASSETS = [
   './kudos-hero.svg?v=brand-colours-1'
 ];
 
+// Do not cache API responses, especially authenticated notification routing.
+// Cache only assets deliberately enumerated below (static logos and images).
+const STATIC_PATHS = new Set(STATIC_ASSETS.map(asset => {
+  return new URL(asset, self.location.href).pathname;
+}));
+
 self.addEventListener('install', event => {
   self.skipWaiting();
   event.waitUntil(
@@ -42,6 +48,13 @@ self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
   const path = url.pathname;
 
+  // Authenticated and dynamic endpoints MUST always go to the network.
+  // Previous versions inadvertently served cached /api/contribution-routing
+  // responses, replaying obsolete "PAUSED" and recipient lists.
+  if (url.origin !== self.location.origin) return;
+  if (path.startsWith('/api/') || path.startsWith('/.netlify/') ||
+      path.startsWith('/auth/') || event.request.headers.has('authorization')) return;
+
   // Let the browser handle core app code and HTML without SW interception.
   // Previously a 304 from a revalidation could be returned directly from the
   // service worker while config.js was deliberately never cached. That can
@@ -51,14 +64,14 @@ self.addEventListener('fetch', event => {
     event.request.mode === 'navigate' ||
     /\.(?:js|mjs|css|html|json|webmanifest)$/i.test(path) ||
     path.endsWith('/config.js');
-  if (isLiveAppAsset) return;
+  if (isLiveAppAsset || !STATIC_PATHS.has(path)) return;
 
-  // Images/manifest can be cache-first.
+  // Only explicitly listed static assets use the offline cache.
   event.respondWith(
     caches.match(event.request).then(cached => {
       if (cached) return cached;
       return fetch(event.request).then(response => {
-        if (response && response.ok && url.origin === self.location.origin) {
+        if (response && response.ok && STATIC_PATHS.has(path)) {
           const copy = response.clone();
           caches.open(CACHE).then(cache => cache.put(event.request, copy));
         }
