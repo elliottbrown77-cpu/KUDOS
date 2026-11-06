@@ -1,4 +1,4 @@
-const KUDOS_REP_TOOLS_VERSION = '2026-11-05.1';
+const KUDOS_REP_TOOLS_VERSION = '2026-11-06.2';
 
 const CFG = window.KUDOS_CONFIG || {};
 const SUPABASE_KEY = CFG.SUPABASE_PUBLISHABLE_KEY || CFG.SUPABASE_ANON_KEY || '';
@@ -219,6 +219,143 @@ if (!READY) {
 
   // One active administration section at a time; preserve all existing controls
   // in the DOM so their established event handlers continue to work unchanged.
+
+  function renderNotificationRoutingSection() {
+    const types=[
+      ['safety','Flight Safety','Alerts contain no report narrative, reference numbers or contributor details.'],
+      ['rewards','Recognition','Alerts contain no names or recognition reasons.'],
+      ['innovation','Innovation','Alerts contain no descriptions, titles or personal information.']
+    ];
+    return `
+      <div class="section-title"><h2>Contribution notifications</h2>
+        <p>Manage alert recipients without adding people to the Netlify hosting team</p></div>
+      <div class="card rep-tool-card">
+        <h3 style="margin-top:0">Delivery readiness</h3>
+        <div id="kudos-notify-readiness" class="notice" aria-live="polite">Checking the email configuration…</div>
+        <p class="help" style="margin-top:9px">Only a generic KUDOS alert is emailed. Actual contribution details remain in KUDOS. An approved SMTP account must be configured by the hosting owner before notifications can be enabled. Flight Safety reporting must still follow authorised procedures.</p>
+      </div>
+      <div class="card rep-tool-card">
+        <h3 style="margin-top:0">Recipient routing</h3>
+        <p class="help">One address per line, or separate addresses with commas. Maximum 20 addresses per category. Changes take effect for future verified submissions.</p>
+        <form id="kudos-notification-routes-form">
+          ${types.map(([id,label,help])=>`
+            <div class="field" style="margin-bottom:16px">
+              <label for="kudos-route-${id}">${label} recipients</label>
+              <textarea id="kudos-route-${id}" data-kudos-route="${id}" rows="3"
+                placeholder="recipient@mod.gov.uk" autocapitalize="none" spellcheck="false"></textarea>
+              <div class="help">${help}</div>
+              <button class="btn ghost compact" type="button" data-kudos-notify-test="${id}" disabled>Send test notification</button>
+            </div>
+          `).join('')}
+          <button type="submit" class="btn primary" id="kudos-notify-save" disabled>Save notification recipients</button>
+        </form>
+        <div id="kudos-notify-save-status" class="rep-tool-status" role="status" aria-live="polite"></div>
+      </div>
+      <div class="card rep-tool-card">
+        <h3 style="margin-top:0">Latest delivery checks</h3>
+        <div id="kudos-notify-last-status" class="help">No delivery information loaded.</div>
+        <p class="help" style="margin-top:9px">Notifications run only after Netlify verifies a submission. The sender requires SMTP credentials in Netlify Functions and KUDOS_EMAIL_DELIVERY_ENABLED=true. You cannot configure sender credentials in this browser.</p>
+      </div>`;
+  }
+
+  async function bindNotificationRouting(root, legacyRoutes) {
+    const form=root.querySelector('#kudos-notification-routes-form');
+    if(!form)return;
+    const readiness=root.querySelector('#kudos-notify-readiness');
+    const saveStatus=root.querySelector('#kudos-notify-save-status');
+    const lastStatus=root.querySelector('#kudos-notify-last-status');
+    const saveBtn=root.querySelector('#kudos-notify-save');
+    const types=['safety','rewards','innovation'];
+    const legacy=Object.fromEntries((legacyRoutes||[]).map(x=>[x.contribution_type,x.recipients||[]]));
+    const field=type=>root.querySelector('[data-kudos-route="'+type+'"]');
+    let ready=false;
+    const showStatus=(message,error=false)=>{
+      if(saveStatus)saveStatus.textContent=(error?'Error: ':'')+message;
+    };
+    const addresses=value=>{
+      const values=String(value||'').split(/[\n,;]+/).map(s=>s.trim().toLowerCase()).filter(Boolean);
+      if(values.length>20)throw new Error('Maximum 20 addresses per category.');
+      if(values.some(email=>email.length>254||!/^[^\s@,;]+@[^\s@,;]+\.[^\s@,;]+$/.test(email)))
+        throw new Error('Enter valid email addresses, separated by new lines or commas.');
+      return [...new Set(values)];
+    };
+    const routeData=()=>Object.fromEntries(types.map(type=>[type,addresses(field(type)?.value)]));
+    async function request(method,body){
+      const {data:{session},error}=await db.auth.getSession();
+      if(error||!session?.access_token)throw new Error('Please sign in as Workspace Admin again.');
+      const response=await fetch('/api/contribution-routing',{
+        method,headers:{
+          'authorization':'Bearer '+session.access_token,
+          ...(body?{'content-type':'application/json'}:{})
+        },...(body?{body:JSON.stringify(body)}:{})
+      });
+      let result={};
+      try{result=await response.json();}catch{}
+      if(!response.ok)throw new Error(result?.error||'Notification service HTTP '+response.status);
+      return result;
+    }
+    const display=data=>{
+      ready=Boolean(data.deliveryEnabled);
+      if(readiness)readiness.textContent=ready
+        ? 'READY — verified contributions can send generic alerts to saved recipients.'
+        : (data.smtpConfigured
+          ? 'PAUSED — the SMTP service is configured, but delivery has not been approved and enabled.'
+          : 'NOT CONFIGURED — recipient lists can be saved, but no email will be sent until an approved SMTP service is connected.');
+      root.querySelectorAll('[data-kudos-notify-test]').forEach(btn=>{
+        const type=btn.dataset.kudosNotifyTest;
+        btn.disabled=!ready || !(data.routes?.[type]||[]).length;
+      });
+      if(lastStatus){
+        const displayNames={safety:'Flight Safety',rewards:'Recognition',innovation:'Innovation'};
+        lastStatus.innerHTML=types.map(type=>{
+          const record=data.health?.[type]||{};
+          const kind=String(record.lastResult||'No delivery attempt recorded').replace(/_/g,' ');
+          const date=record.lastAttemptAt||record.lastTestAt||'';
+          return '<div style="padding:5px 0"><strong>'+esc(displayNames[type])+':</strong> '+
+            esc(kind)+(date?' — '+esc(new Date(date).toLocaleString('en-GB')):'')+'</div>';
+        }).join('');
+      }
+    };
+    try{
+      const response=await request('GET');
+      const initial=response.routesSaved?response.routes:legacy;
+      for(const type of types)if(field(type))field(type).value=(initial?.[type]||[]).join('\n');
+      if(!response.routesSaved)showStatus('Existing recipient settings have been loaded where available. Review them and select Save to activate these routes.');
+      if(saveBtn)saveBtn.disabled=false;
+      display(response);
+    }catch(error){
+      if(readiness)readiness.textContent='Unable to load recipient routing: '+(error.message||error);
+      showStatus('Recipient routing could not be loaded. Refresh or sign in again.',true);
+      return;
+    }
+    form.addEventListener('submit',async event=>{
+      event.preventDefault();
+      try{
+        if(saveBtn)saveBtn.disabled=true;
+        const routes=routeData();
+        const saved=await request('POST',{action:'save',routes});
+        display(saved);
+        showStatus('Recipients saved for future verified contributions.'+
+          (saved.deliveryEnabled?' Sending is enabled.':' Sending remains disabled until an approved SMTP service is configured.'));
+        // Keep the existing SQL settings in sync for audit and older admin tooling.
+        const {data:{session}}=await db.auth.getSession();
+        const mirror=types.map(type=>({contribution_type:type,recipients:routes[type],updated_by:session?.user?.id||null,updated_at:new Date().toISOString()}));
+        const {error}=await db.from('contribution_email_routes').upsert(mirror,{onConflict:'contribution_type'});
+        if(error)showStatus('Delivery routes saved, but the legacy settings mirror could not be updated: '+error.message,true);
+      }catch(error){showStatus(String(error?.message||error),true);}
+      finally{if(saveBtn)saveBtn.disabled=false;}
+    });
+    root.querySelectorAll('[data-kudos-notify-test]').forEach(btn=>btn.addEventListener('click',async()=>{
+      btn.disabled=true;
+      try{
+        const result=await request('POST',{action:'test',type:btn.dataset.kudosNotifyTest});
+        showStatus('Generic test email sent to '+result.recipientCount+' recipient(s).');
+        display(await request('GET'));
+      }catch(error){showStatus('Test not sent: '+String(error?.message||error),true);}
+      finally{btn.disabled=!ready;}
+    }));
+  }
+
   function kudosAdminSections(globalAdmin, accountAdmin, repMode=false) {
     if(repMode) {
       // Only the controls that were already available in Rep mode.
@@ -238,6 +375,7 @@ if (!READY) {
       {id:'challenges',label:'Challenges',icon:'◎',description:'Create, edit and remove challenges'},
       {id:'moderation',label:'Moderation',icon:'⚑',description:'Review, edit and delete logged entries'},
       {id:'contributions',label:'Contributions',icon:'★',description:'Safety, Innovation and Recognition follow-ups and exports'},
+      ...(accountAdmin?[{id:'notifications',label:'Notifications',icon:'✉',description:'Manage email recipients and test alert delivery'}]:[]),
       {id:'points',label:'KUDOS points',icon:'＋',description:'Audited point additions and deductions'},
       {id:'profiles',label:'Profiles',icon:'♙',description:'Find and manage member profiles'},
       ...(accountAdmin?[{id:'access',label:'Access',icon:'⚿',description:'Management accounts, permissions and audit'}]:[])
@@ -2131,12 +2269,14 @@ if (!READY) {
           ${kudosAdminPanel('challenges',renderChallengeSection(data,mode==='admin',isGlobalAdmin))}
           ${kudosAdminPanel('moderation',renderEntrySection(moderationData,teams,isGlobalAdmin))}
           ${kudosAdminPanel('contributions',renderContributionQueues(scopedContributionData,teams,isGlobalAdmin))}
+          ${adminData ? kudosAdminPanel('notifications',renderNotificationRoutingSection()) : ''}
           ${kudosAdminPanel('points',renderPointsSection(data,mode==='admin'))}
           ${mode==='admin'?kudosAdminPanel('profiles',renderProfileManagementSection(globalProfileData||data,teams,isGlobalAdmin)):''}
           ${adminData ? kudosAdminPanel('access',renderAccessAdminSection(ctx,teams,adminData,platformData)) : ''}
         `;
         main.appendChild(root);
         bindKudosAdminOverview(root,sectionTiles);
+        if(adminData)bindNotificationRouting(root,adminData.routes);
         bindContributionUpdates(root,scopedContributionData,teams,isGlobalAdmin);
 
         document.getElementById('kudos-rep-tools-team')?.addEventListener('change', e => {

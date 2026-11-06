@@ -1049,7 +1049,7 @@ function myContributionUpdates(){
 
 function contributeView(){
   return `<div class="section-title"><h2>Contribute</h2><p>Safety, recognition and innovation</p></div>${contributionQuickActions(false)}
-  <div class="notice" style="margin-top:14px">Every submission records the selected KUDOS profile as the creator and is also sent through the site notification form for administrator email notification. Recognition, Innovation and Flight Safety are each worth 20 KUDOS.</div>
+  <div class="notice" style="margin-top:14px">Every submission is recorded in KUDOS and submitted to the verified notification feed. Emails are sent only when approved sender settings are enabled; Flight Safety reports must still follow authorised procedures. Recognition, Innovation and Flight Safety are each worth 20 KUDOS.</div>
   ${myContributionUpdates()}`;
 }
 
@@ -1370,35 +1370,13 @@ async function sendContributionNotification(type,fd,p){
     console.error('Contribution Netlify form feed failed',err);
   }
 
-  const emailType=type==='recognition'?'rewards':type;
-  try{
-    const response=await fetch('/api/contribution-email',{
-      method:'POST',
-      headers:{'content-type':'application/json'},
-      body:JSON.stringify({
-        type:emailType,
-        ...common,
-        subject,
-        details
-      })
-    });
-
-    let payload={};
-    try{payload=await response.json();}catch{}
-
-    if(!response.ok){
-      const reason=payload?.reason||payload?.error||`HTTP ${response.status}`;
-      throw new Error(String(reason));
-    }
-
-    results.emailDelivered=payload?.delivered===true;
-    results.emailReason=String(payload?.reason||'');
-  }catch(err){
-    results.emailReason=String(err?.message||err||'email_failed');
-    console.error('Contribution routed email failed',err);
-  }
-
-  return results;
+  // Verified Netlify Form submissions trigger delivery on the server.
+  // The browser cannot confirm eventual email delivery, so never claim it was sent.
+  return {
+    formFeed:results.formFeed,
+    emailDelivered:false,
+    emailReason:results.formFeed?'queued_for_verification':'form_feed_failed'
+  };
 }
 
 async function submitSpecial(type,fd){
@@ -1412,11 +1390,7 @@ async function submitSpecial(type,fd){
     saveDemo();
     try{
       const delivery=await sendContributionNotification(type,fd,p);
-      state.notice=delivery.emailDelivered
-        ? 'Saved. This contribution is worth 20 KUDOS points and the configured email notification was sent.'
-        : delivery.emailReason==='no_recipients'
-          ? 'Saved. This contribution is worth 20 KUDOS points. No email recipient is currently configured for this contribution area.'
-          : 'Saved. This contribution is worth 20 KUDOS points, but the routed email was not delivered. Please tell a KUDOS administrator.';
+      state.notice='Demo contribution saved locally. No live email notifications were sent.';
     }catch(err){
       console.error(err);
       state.notice='Saved in KUDOS, but contribution notification processing failed. Please tell a KUDOS administrator.';
@@ -1455,10 +1429,10 @@ async function submitSpecial(type,fd){
   }
 
   state.notice=delivery?.emailDelivered
-    ? 'Saved. This contribution is worth 20 KUDOS points and the configured email notification was sent.'
-    : delivery?.emailReason==='no_recipients'
-      ? 'Saved. This contribution is worth 20 KUDOS points. No email recipient is currently configured for this contribution area.'
-      : 'Saved in KUDOS. This contribution is worth 20 KUDOS points, but the routed email was not delivered. Please tell a KUDOS administrator.';
+    ? 'Saved. This contribution is worth 20 KUDOS points.'
+    : delivery?.formFeed
+      ? 'Saved in KUDOS (+20 KUDOS). The notification form was submitted for verification. Email delivery depends on the configured sender.'
+      : 'Saved in KUDOS (+20 KUDOS), but the notification form could not be submitted. Please notify an administrator.';
   await refresh();
 }
 
