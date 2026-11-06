@@ -7,7 +7,7 @@ const READY = !!(CFG.SUPABASE_URL && SUPABASE_KEY && window.supabase);
 if (!READY) {
   console.info('KUDOS Rep Tools: Supabase is not configured; rep controls are disabled.');
 } else {
-  const db = window.supabase.createClient(CFG.SUPABASE_URL, SUPABASE_KEY);
+  const db = window.KUDOS_SUPABASE || window.supabase.createClient(CFG.SUPABASE_URL, SUPABASE_KEY);
 
   const esc = (value = '') => String(value).replace(/[&<>'"]/g, c => ({
     '&': '&amp;',

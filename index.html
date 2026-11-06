@@ -82,7 +82,7 @@
     <input name="report_type"><input name="submitted_by"><input name="submitter_profile_code"><input name="submitter_profile_id"><input name="submitter_team"><input name="submission_date"><input name="subject"><textarea name="details"></textarea><input name="site_url">
   </form>
 
-  <script src="config.js"></script>
+  <script src="config.js?v=live-startup-20261106"></script>
   <script>
     const cfg = window.KUDOS_CONFIG || {};
 
@@ -188,18 +188,61 @@
 
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./service-worker.js?v=banner-copy-1', { scope: './', updateViaCache: 'none' })
+        navigator.serviceWorker.register('./service-worker.js?v=live-only-20261106', { scope: './', updateViaCache: 'none' })
           .catch(err => console.error('KUDOS service worker registration failed', err));
       });
     }
 
-    if (cfg.SUPABASE_URL && (cfg.SUPABASE_PUBLISHABLE_KEY || cfg.SUPABASE_ANON_KEY)) {
-      const script = document.createElement('script');
-      script.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';
-      script.onload = () => loadKudosApp();
-      document.head.appendChild(script);
+    // Production KUDOS must never silently enter the obsolete sample/demo mode.
+    // If config.js or the external SDK fails to load, explain and offer a retry.
+    function kudosStartupError(message) {
+      const app = document.getElementById('app');
+      if (!app) return;
+      const safeMessage = String(message || 'The live connection is unavailable.');
+      app.innerHTML = '';
+      const panel = document.createElement('section');
+      panel.style.cssText = 'max-width:660px;margin:12vh auto;padding:28px;border-radius:18px;background:#0c2338;color:#fff;font:16px/1.55 system-ui,sans-serif';
+      const heading = document.createElement('h1');
+      heading.textContent = 'KUDOS live connection unavailable';
+      const description = document.createElement('p');
+      description.textContent = safeMessage + ' Your KUDOS records have not been replaced by demo data.';
+      const retry = document.createElement('button');
+      retry.type = 'button';
+      retry.textContent = 'Retry live KUDOS';
+      retry.style.cssText = 'padding:12px 18px;border:0;border-radius:10px;background:#d8c18c;color:#0c2338;font-weight:800;cursor:pointer';
+      retry.addEventListener('click', () => window.location.reload());
+      panel.append(heading, description, retry);
+      app.appendChild(panel);
+      console.error('KUDOS startup:', safeMessage);
+    }
+
+    const readyConfig = Boolean(cfg.SUPABASE_URL && (cfg.SUPABASE_PUBLISHABLE_KEY || cfg.SUPABASE_ANON_KEY));
+    if (!readyConfig) {
+      kudosStartupError('The connection settings could not be loaded. Check your connection, then retry.');
     } else {
-      loadKudosApp();
+      const sdkSources = [
+        'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2',
+        'https://unpkg.com/@supabase/supabase-js@2'
+      ];
+      function loadSdk(attempt = 0) {
+        if (window.supabase?.createClient) {
+          loadKudosApp().catch(error => kudosStartupError('The application could not start: ' + (error.message || error)));
+          return;
+        }
+        if (attempt >= sdkSources.length) {
+          kudosStartupError('The live sign-in service is not available. Please check your network connection and retry.');
+          return;
+        }
+        const script = document.createElement('script');
+        script.src = sdkSources[attempt];
+        script.async = true;
+        script.onload = () => loadSdk(attempt + 1);
+        // loadSdk retries only when the SDK is missing, and starts the app
+        // immediately if the SDK registered the expected global.
+        script.onerror = () => loadSdk(attempt + 1);
+        document.head.appendChild(script);
+      }
+      loadSdk();
     }
   </script>
 </body>

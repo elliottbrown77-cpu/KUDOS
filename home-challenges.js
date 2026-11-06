@@ -5,7 +5,7 @@ const KEY = CFG.SUPABASE_PUBLISHABLE_KEY || CFG.SUPABASE_ANON_KEY || '';
 const READY = !!(CFG.SUPABASE_URL && KEY && window.supabase);
 
 if (READY) {
-  const db = window.supabase.createClient(CFG.SUPABASE_URL, KEY);
+  const db = window.KUDOS_SUPABASE || window.supabase.createClient(CFG.SUPABASE_URL, KEY);
   let running = false;
   let timer = null;
 

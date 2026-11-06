@@ -1,4 +1,4 @@
-const CACHE = 'kudos-v18-banner-copy';
+const CACHE = 'kudos-v19-live-only-20261106';
 const STATIC_ASSETS = [
   './hero-merlin.png',
   './chf-crest.png',
@@ -42,32 +42,16 @@ self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
   const path = url.pathname;
 
-  // Always prefer the network for the application shell/code so new
-  // GitHub/Netlify deployments appear immediately.
-  const isAppCode =
+  // Let the browser handle core app code and HTML without SW interception.
+  // Previously a 304 from a revalidation could be returned directly from the
+  // service worker while config.js was deliberately never cached. That can
+  // prevent the configuration script from executing and leave KUDOS in demo mode.
+  // Native browser cache validation correctly handles 304 and is safer here.
+  const isLiveAppAsset =
     event.request.mode === 'navigate' ||
-    path.endsWith('/index.html') ||
-    path.endsWith('/app.js') ||
-    path.endsWith('/styles.css') ||
-    path.endsWith('/config.js') ||
-    path.endsWith('/push-notifications.js') ||
-    path.endsWith('/service-worker.js') ||
-    path.endsWith('/manifest.webmanifest');
-
-  if (isAppCode) {
-    event.respondWith(
-      fetch(event.request)
-        .then(response => {
-          if (response && response.ok && !path.endsWith('/config.js')) {
-            const copy = response.clone();
-            caches.open(CACHE).then(cache => cache.put(event.request, copy));
-          }
-          return response;
-        })
-        .catch(() => caches.match(event.request))
-    );
-    return;
-  }
+    /\.(?:js|mjs|css|html|json|webmanifest)$/i.test(path) ||
+    path.endsWith('/config.js');
+  if (isLiveAppAsset) return;
 
   // Images/manifest can be cache-first.
   event.respondWith(
