@@ -1,8 +1,9 @@
 import { getStore } from "@netlify/blobs";
 import nodemailer from "nodemailer";
+import {renderContributionEmail} from "../lib/kudos-email-template.mjs";
 
 // Event handlers are invoked only after Netlify has verified a form submission.
-// Do not email the contributor's name, details, safety description or free text.
+// Include all verified form submission details in the branded email.
 const label:Record<string,string>={safety:"Flight Safety",innovation:"Innovation",rewards:"Recognition"};
 const matchForm:Record<string,string>={
   "kudos-safety":"safety",
@@ -62,18 +63,17 @@ export default {
         auth:{user:process.env.KUDOS_SMTP_USER,pass:process.env.KUDOS_SMTP_PASS}
       });
       try {
+        const message=renderContributionEmail(type,event.data||{});
         await smtp.sendMail({
           from:{name:"KUDOS Human Performance",address:process.env.KUDOS_EMAIL_FROM||process.env.KUDOS_SMTP_USER||""},
           to:recipients.join(", "),
-          subject:"New KUDOS "+label[type]+" contribution",
-          text:"A new KUDOS "+label[type]+" contribution has been submitted.\n\n"+
-            "Sign in to KUDOS to review the entry using your authorised management account:\n"+
-            "https://chfkudos.netlify.app/\n\n"+
-            "This notification does not contain the submission details. Do not use KUDOS email as an official Flight Safety reporting channel.",
+          subject:message.subject,
+          html:message.html,
+          text:message.text,
           disableFileAccess:true,disableUrlAccess:true
         });
       } finally {smtp.close();}
-      await record(type,"sent");
+      await record(type,"sent_html_full");
     }catch(e){
       await record(type,"delivery_failed");
       console.error("KUDOS verified-form notification failed for category",type,

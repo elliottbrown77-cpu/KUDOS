@@ -1,147 +1,75 @@
-# KUDOS contribution email routing
+# KUDOS — fully detailed branded HTML contribution emails
 
-## Purpose
-Workspace Admins can open **Admin/ Rep → Admin → Overview → Notifications** to manage
-recipient addresses for Flight Safety, Recognition and Innovation without inviting
-recipients into the Netlify hosting team.
+## Delivery workflow
 
-## How notifications work
-1. An entry is saved in the KUDOS Supabase database.
-2. The browser posts the corresponding existing Netlify Forms record, plus the
-   legacy aggregate record for established audit workflows.
-3. Netlify verifies the form submission. The `formSubmitted` Netlify Function
-   handles the *specific* form once; the aggregate form is ignored.
-4. The function reads the Admin-managed recipients from the protected Netlify
-   Blobs routing store.
-5. **Only a generic notification** containing the contribution type and the KUDOS
-   home-page URL is emailed. No free text, names, reference numbers, report
-   narratives or user-entered field content are included.
+When a signed-in KUDOS user submits a Flight Safety, Recognition or Innovation
+contribution, KUDOS stores the record in Supabase and submits its Netlify Form
+feed. The Netlify-verified formSubmitted event sends the complete form data to
+the recipients configured in Admin / Rep → Admin → Overview → Notifications.
+The separate aggregate audit form is ignored by the email handler so it
+does not trigger a second Amazon SES notification.
 
-The former public `/api/contribution-email` endpoint is disabled with HTTP 410
-to prevent unauthenticated email triggering and arbitrary user-submitted
-notification text. The browser never reports that email was successfully delivered
-until the server has confirmed delivery; a form submission is merely queued for
-verification.
+Each email contains all submitted fields and the full, unredacted content:
+- Submitter name, profile code, profile ID, team, submission date and page URL.
+- Flight Safety: category, complete description and external reference.
+- Recognition: person recognised and the complete reason or narrative.
+- Innovation: category, full title, subject where supplied and full description.
+- Additional fields added to Netlify Forms in future also appear automatically,
+  except internal honeypot and form-name control fields.
 
-## Activation and approval
-The SMTP sender is deliberately **not activated by adding recipients**. Configure
-the following in Netlify's site Environment variables, scoped to Functions
-and Production, only after confirming that the email supplier and the content
-are authorised for this use:
+The original content is retained. HTML special characters are safely encoded
+so user text displays correctly; they are not redacted or removed. Each email
+has a matching full-content plain-text fallback for email clients that block
+HTML.
 
-- `KUDOS_SMTP_HOST` — approved mail relay hostname
-- `KUDOS_SMTP_PORT` — 587 (STARTTLS) or 465 (TLS), as instructed by the provider
-- `KUDOS_SMTP_USER` — mail relay username
-- `KUDOS_SMTP_PASS` — secret credential (mark as secret)
-- `KUDOS_EMAIL_FROM` — provider-authorised sender address
-- `KUDOS_EMAIL_DELIVERY_ENABLED` — **true** only after authorisation and a test.
-  The default when absent is disabled; it does not prevent a manual test email.
+## Branding
 
-Redeploy KUDOS after changing environment variables. In the Notifications tile,
-save recipients and use **Send test notification** while automatic sending is
-still disabled. The test contains no submission details. Enable automatic sending
-only after the test is successful and the chosen email route is authorised.
+Shared renderer: netlify/lib/kudos-email-template.mjs
+Automatic sender: netlify/functions/contribution-form-events.mts
+Manual test endpoint: netlify/functions/contribution-routing.mts
 
-## Security and operations
-- Recipient read/write/test endpoints validate the signed-in Supabase user and
-  require the legacy KUDOS Workspace Admin role.
-- No SMTP credential or server secret is exposed to the browser.
-- Only Netlify-verified form-submission events trigger automatic email.
-- No user-entered content is included in outgoing emails or delivery logs.
-- The latest delivery result for each category is shown in Admin, without a list
-  of personal data.
-- Saved recipient lists are mirrored into existing `contribution_email_routes`
-  for compatibility. Netlify Blobs is the active delivery source.
-- Legacy Netlify's own form-notification emails may still be configured. Review
-  those separately; do not change them until this route is tested.
-- **Do not use KUDOS as a replacement for formal Defence Flight Safety reporting.**
-  Classify all data correctly and obtain appropriate MOD approval for any service
-  that processes it.
+The HTML design uses KUDOS navy (#0C2338), commando green (#435F46), gold
+(#D8C18C), the existing PNG logo (kudos-app-192-v3.png), the Human
+Performance Optimisation strapline and the KUDOS tagline. It uses HTML tables
+with inline styles to work in Outlook and mobile clients. Recipients may
+need to allow remote images; brand name and colours remain visible without
+images.
 
-## Verification
-- Test a new, non-sensitive Recognition submission and confirm the verified-form
-  handler records `sent` in Admin, *after* approved SMTP configuration.
-- Confirm exactly one message is generated (the aggregate audit form is ignored).
-- Confirm no entry narrative or personal data appears in that message.
-- Confirm a Rep or unsigned-in user cannot fetch or change recipient lists.
-- Confirm the browser does not call `/api/contribution-email`.
+## Manual test mode
 
-## Shared RNWSA Amazon SES transport (November 2026)
+The three Send test notification buttons send sample HTML emails in exactly
+the same branded template. Test content is clearly marked as invented example
+data rather than a genuine KUDOS contribution. The test remains rate-limited
+to one per category each minute and requires Workspace Admin authentication.
+Existing saved email recipients and SMTP credentials remain unchanged.
 
-The RNWSA/RNSF website at `rnwsa.org` uses Amazon SES SMTP in London
-(`email-smtp.eu-west-2.amazonaws.com`, port `587`). KUDOS can use a
-production-only set of corresponding Netlify function environment variables.
-Netlify masks the existing RNSF SMTP username and password; these credentials
-cannot be read or transferred through the connector. **Provision a separate
-KUDOS SES SMTP user** (recommended), or securely add existing authorised SMTP
-credentials manually through the KUDOS Netlify environment settings.
-The verified sender currently configured on RNWSA is
-`membership@rnwsa.org`, displayed in KUDOS as **KUDOS Human Performance**.
+## Configuration and information handling
 
-Credentials MUST be stored as Netlify secret environment variables, restricted
-to the Functions scope and Production context. They must never be placed in
-GitHub, browser code, logs, or documentation. A distinct least-privilege SES
-SMTP user for KUDOS is preferred over long-term sharing of the RNWSA user.
+Production uses the dedicated Amazon SES London SMTP credentials in protected
+Netlify Functions environment variables; the from address is currently
+membership@rnwsa.org with KUDOS Human Performance display name.
 
-**Safe activation order:** 1) Configure SMTP, 2) review/save recipients in
-Admin → Notifications, 3) send harmless test messages (the test button works
-while automatic delivery is paused), 4) obtain the relevant MOD/email security
-approval, 5) set `KUDOS_EMAIL_DELIVERY_ENABLED=true` in KUDOS Netlify
-environment variables and redeploy. The setting defaults to **false** and
-RNWSA's own sending flag is never changed.
+Production KUDOS_EMAIL_DELIVERY_ENABLED=true enables automatic sending.
+Other deploy contexts remain disabled. Changes to recipient lists take effect
+from KUDOS Admin without changing Netlify team membership.
 
-For production SMTP, KUDOS requires STARTTLS for port 587, enforces minimum
-TLS 1.2, uses a 7-second connection timeout and closes the connection after
-each send. It sends generic notices only.
+This change supersedes the previous generic-alert approach. The user has
+explicitly requested all form details to be included, including safety
+narratives and personally identifying fields. The earlier authorisation for
+emails to MOD accounts was provided when they carried only generic alerts.
+Ensure use of full submission content with this external email platform is
+permitted under applicable MOD data-handling rules and by recipient access.
+KUDOS is not an official Defence Flight Safety reporting channel.
 
-## One-off SES smoke test
-A temporary, production-only Netlify deploy event validates SMTP and sends
-one generic test email to a previously configured personal-mail recipient.
-The event is gated by `KUDOS_SES_SMOKE_ENABLED`, uses a fixed one-shot marker
-stored in Netlify Blobs, and never reads or transmits contribution records.
-The temporary function and test variables must be removed after verification.
-Amazon SES accepting a message does not guarantee its final delivery.
+Legacy built-in Netlify form notification rules might still send their own
+emails. Check for duplicates in Netlify; do not disable Netlify Forms capture.
 
-## SES smoke-test cleanup
+## Checks
 
-The one-shot SES smoke-test sender has been removed from the live functions
-after its deployment attempt, and the production-only smoke test trigger and
-recipient secret variables removed. The resulting generic state (where present)
-remains visible to Workspace Admins in Notifications. Automatic contribution
-delivery remains explicitly disabled; a missing inbox receipt must never be
-reported as successful delivery.
-
-## Recipient test button usability fix (6 November 2026)
-The SMTP test buttons remain available when SMTP is configured even when
-no active recipients are recorded for one category. The Admin screen now
-explains the active recipient count rather than silently greying out a button.
-An explicit `Send test notification` click with zero active recipients
-restores that category's previous authorised SQL recipient list if present,
-or uses the email address typed into the corresponding field, saves it to the
-live route store, then sends **only a generic harmless SMTP test**. Other
-categories remain unchanged. SMTP configured and automatic notifications
-enabled are deliberately separate states, and the test action remains
-one-per-minute rate limited on the server. The UI does not claim actual
-inbox delivery merely because SMTP accepted a message.
-
-## Production activation — 6 November 2026
-
-The Workspace Administrator confirmed receipt of all three categories of
-harmless SMTP tests (Flight Safety, Recognition and Innovation) through the
-dedicated KUDOS Amazon SES SMTP account and confirmed authorisation for the
-generic MOD email route. The KUDOS Netlify Functions production-only setting
-`KUDOS_EMAIL_DELIVERY_ENABLED=true` was enabled.
-
-The application uses Netlify's verified `formSubmitted` event to send a
-generic alert from `membership@rnwsa.org` to the separately managed saved
-recipients for each specific form. The legacy aggregate audit form is ignored
-by the SES notification handler. This setting does **not** enable alerts in
-Netlify development, branch deploys or deploy previews.
-
-Operational follow-up: Netlify's legacy built-in notification rules cannot be
-listed or modified using the current Netlify connector. Review those rules in
-the Netlify UI and disable redundant email rules **only**, leaving Netlify
-Forms submission capture enabled. Verify that a new non-sensitive contribution
-generates one SES message and no unintended duplicate emails. The
-administrator's in-app 'Latest delivery checks' section shows outcomes for
-actual verified-form events, but manual test messages are a distinct operation.
+- Render all three category examples, including names, IDs, narratives,
+  special characters and multiline descriptions.
+- Check the plain-text alternative includes every field.
+- Click each test button to confirm a branded sample reaches the inbox.
+- Submit a legitimate new entry in an authorised test context and verify
+  one full-content HTML notification is sent.
+- Ensure recipient management and test sending are restricted to Admin users.

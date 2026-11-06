@@ -1,4 +1,4 @@
-const KUDOS_REP_TOOLS_VERSION = '2026-11-06.5';
+const KUDOS_REP_TOOLS_VERSION = '2026-11-06.6';
 
 const CFG = window.KUDOS_CONFIG || {};
 const SUPABASE_KEY = CFG.SUPABASE_PUBLISHABLE_KEY || CFG.SUPABASE_ANON_KEY || '';
@@ -222,9 +222,9 @@ if (!READY) {
 
   function renderNotificationRoutingSection() {
     const types=[
-      ['safety','Flight Safety','Alerts contain no report narrative, reference numbers or contributor details.'],
-      ['rewards','Recognition','Alerts contain no names or recognition reasons.'],
-      ['innovation','Innovation','Alerts contain no descriptions, titles or personal information.']
+      ['safety','Flight Safety','Emails contain the full Flight Safety report, contributor details and reference.'],
+      ['rewards','Recognition','Emails contain the person recognised, the full reason and contributor details.'],
+      ['innovation','Innovation','Emails contain the complete idea, title, description and contributor details.']
     ];
     return `
       <div class="section-title"><h2>Contribution notifications</h2>
@@ -232,7 +232,7 @@ if (!READY) {
       <div class="card rep-tool-card">
         <h3 style="margin-top:0">Delivery readiness</h3>
         <div id="kudos-notify-readiness" class="notice" aria-live="polite">Checking the email configuration…</div>
-        <p class="help" style="margin-top:9px">Only a generic KUDOS alert is emailed. Actual contribution details remain in KUDOS. When an SMTP sender is configured, you can test it while automatic sending is paused. Flight Safety reporting must still follow authorised procedures.</p>
+        <p class="help" style="margin-top:9px">Emails now include the complete submission, including names, narratives and references. The email is HTML with KUDOS branding and a full plain-text alternative. Test emails use clearly marked example details. Flight Safety reporting must still follow authorised procedures.</p>
       </div>
       <div class="card rep-tool-card">
         <h3 style="margin-top:0">Recipient routing</h3>
@@ -298,7 +298,7 @@ if (!READY) {
     const display=data=>{
       ready=Boolean(data.deliveryEnabled);
       if(readiness)readiness.textContent=ready
-        ? 'READY — verified contributions can send generic alerts to saved recipients.'
+        ? 'READY — new contributions send full-detail KUDOS-branded HTML emails.'
         : (data.smtpConfigured
           ? 'PAUSED — the SMTP service is configured, but delivery has not been approved and enabled.'
           : 'NOT CONFIGURED — recipient lists can be saved, but no email will be sent until an approved SMTP service is connected.');
@@ -310,7 +310,7 @@ if (!READY) {
         btn.disabled=!data.smtpConfigured;
         const info=root.querySelector('[data-kudos-notify-availability="'+type+'"]');
         if(info)info.textContent=count
-          ? count+' saved recipient'+(count===1?'':'s')+' ready for a harmless test.'
+          ? count+' saved recipient'+(count===1?'':'s')+' ready for a branded sample HTML test.'
           : (Array.isArray(legacy[type])&&legacy[type].length
             ? 'No active recipients in this category. Send test will restore the previously saved recipient list before testing.'
             : 'No recipients saved. Enter an email address above; Send test will save it first.');
@@ -390,8 +390,8 @@ if (!READY) {
           if(mirrorError)console.warn('KUDOS recipient mirror not updated');
         }
         const result=await request('POST',{action:'test',type});
-        showStatus('Amazon SES accepted a generic test email for '+result.recipientCount+
-          ' recipient(s). Please confirm that it arrived in the inbox.');
+        showStatus('Amazon SES accepted a KUDOS-branded sample HTML test email for '+result.recipientCount+
+          ' recipient(s). Please check the inbox to confirm the layout.');
         display(await request('GET'));
       }catch(error){showStatus('Test not sent: '+String(error?.message||error),true);}
       finally{

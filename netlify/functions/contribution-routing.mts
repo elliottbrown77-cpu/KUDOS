@@ -1,5 +1,6 @@
 import { getStore, getDeployStore } from "@netlify/blobs";
 import nodemailer from "nodemailer";
+import {renderContributionEmail,exampleContribution} from "../lib/kudos-email-template.mjs";
 
 const SUPABASE_URL = "https://yzrzlexarwgpsqgxbrzn.supabase.co";
 const SUPABASE_KEY = "sb_publishable_tmv3lizHLy9tYrGyG_BwPw_4IHXEIow";
@@ -101,17 +102,19 @@ export default async (req: Request) => {
         auth:{user:process.env.KUDOS_SMTP_USER,pass:process.env.KUDOS_SMTP_PASS}
       });
       try {
+        const message=renderContributionEmail(type,exampleContribution(type),{test:true});
         await smtp.sendMail({from:{
             name:"KUDOS Human Performance",address:process.env.KUDOS_EMAIL_FROM||process.env.KUDOS_SMTP_USER||""
           },to:recipients.join(", "),
-          subject:"KUDOS notification routing test — "+type,
-          text:"This is a KUDOS routing test. No contribution information or personal data is included.\n\nKUDOS: https://chfkudos.netlify.app/",
+          subject:message.subject,
+          html:message.html,
+          text:message.text,
           disableFileAccess:true,disableUrlAccess:true
         });
       } finally {
         smtp.close();
       }
-      await store().setJSON("status-"+type,{lastTestAt:new Date().toISOString(),lastResult:"test_sent"});
+      await store().setJSON("status-"+type,{lastTestAt:new Date().toISOString(),lastResult:"html_sample_sent"});
       return Response.json({ok:true,recipientCount:recipients.length,testSent:true});
     }
     return Response.json({error:"Unknown action"},{status:400});
