@@ -44,17 +44,25 @@ export default {
     try {
       const port=Number(process.env.KUDOS_SMTP_PORT||587);
       if(!Number.isInteger(port)||port<1||port>65535)throw Error("SMTP port is invalid");
-      const smtp=nodemailer.createTransport({host:process.env.KUDOS_SMTP_HOST,port,
-        secure:port===465,auth:{user:process.env.KUDOS_SMTP_USER,pass:process.env.KUDOS_SMTP_PASS}});
-      await smtp.sendMail({
-        from:process.env.KUDOS_EMAIL_FROM||process.env.KUDOS_SMTP_USER,
-        to:recipients.join(", "),
-        subject:"New KUDOS "+label[type]+" contribution",
-        text:"A new KUDOS "+label[type]+" contribution has been submitted.\n\n"+
-          "Sign in to KUDOS to review the entry using your authorised management account:\n"+
-          "https://chfkudos.netlify.app/\n\n"+
-          "This notification does not contain the submission details. Do not use KUDOS email as an official Flight Safety reporting channel."
+      const smtp=nodemailer.createTransport({
+        host:process.env.KUDOS_SMTP_HOST,port,
+        secure:port===465,requireTLS:port!==465,
+        tls:{minVersion:"TLSv1.2"},
+        connectionTimeout:7000,greetingTimeout:7000,socketTimeout:7000,
+        auth:{user:process.env.KUDOS_SMTP_USER,pass:process.env.KUDOS_SMTP_PASS}
       });
+      try {
+        await smtp.sendMail({
+          from:{name:"KUDOS Human Performance",address:process.env.KUDOS_EMAIL_FROM||process.env.KUDOS_SMTP_USER||""},
+          to:recipients.join(", "),
+          subject:"New KUDOS "+label[type]+" contribution",
+          text:"A new KUDOS "+label[type]+" contribution has been submitted.\n\n"+
+            "Sign in to KUDOS to review the entry using your authorised management account:\n"+
+            "https://chfkudos.netlify.app/\n\n"+
+            "This notification does not contain the submission details. Do not use KUDOS email as an official Flight Safety reporting channel.",
+          disableFileAccess:true,disableUrlAccess:true
+        });
+      } finally {smtp.close();}
       await record(type,"sent");
     }catch(e){
       await record(type,"delivery_failed");

@@ -35,11 +35,12 @@ are authorised for this use:
 - `KUDOS_SMTP_PASS` — secret credential (mark as secret)
 - `KUDOS_EMAIL_FROM` — provider-authorised sender address
 - `KUDOS_EMAIL_DELIVERY_ENABLED` — **true** only after authorisation and a test.
-  The default when absent is disabled.
+  The default when absent is disabled; it does not prevent a manual test email.
 
 Redeploy KUDOS after changing environment variables. In the Notifications tile,
-save recipients and use **Send test notification**. The test contains no submission
-details.
+save recipients and use **Send test notification** while automatic sending is
+still disabled. The test contains no submission details. Enable automatic sending
+only after the test is successful and the chosen email route is authorised.
 
 ## Security and operations
 - Recipient read/write/test endpoints validate the signed-in Supabase user and
@@ -64,3 +65,31 @@ details.
 - Confirm no entry narrative or personal data appears in that message.
 - Confirm a Rep or unsigned-in user cannot fetch or change recipient lists.
 - Confirm the browser does not call `/api/contribution-email`.
+
+## Shared RNWSA Amazon SES transport (November 2026)
+
+The RNWSA/RNSF website at `rnwsa.org` uses Amazon SES SMTP in London
+(`email-smtp.eu-west-2.amazonaws.com`, port `587`). KUDOS can use a
+production-only set of corresponding Netlify function environment variables.
+Netlify masks the existing RNSF SMTP username and password; these credentials
+cannot be read or transferred through the connector. **Provision a separate
+KUDOS SES SMTP user** (recommended), or securely add existing authorised SMTP
+credentials manually through the KUDOS Netlify environment settings.
+The verified sender currently configured on RNWSA is
+`membership@rnwsa.org`, displayed in KUDOS as **KUDOS Human Performance**.
+
+Credentials MUST be stored as Netlify secret environment variables, restricted
+to the Functions scope and Production context. They must never be placed in
+GitHub, browser code, logs, or documentation. A distinct least-privilege SES
+SMTP user for KUDOS is preferred over long-term sharing of the RNWSA user.
+
+**Safe activation order:** 1) Configure SMTP, 2) review/save recipients in
+Admin → Notifications, 3) send harmless test messages (the test button works
+while automatic delivery is paused), 4) obtain the relevant MOD/email security
+approval, 5) set `KUDOS_EMAIL_DELIVERY_ENABLED=true` in KUDOS Netlify
+environment variables and redeploy. The setting defaults to **false** and
+RNWSA's own sending flag is never changed.
+
+For production SMTP, KUDOS requires STARTTLS for port 587, enforces minimum
+TLS 1.2, uses a 7-second connection timeout and closes the connection after
+each send. It sends generic notices only.

@@ -1,4 +1,4 @@
-const KUDOS_REP_TOOLS_VERSION = '2026-11-06.2';
+const KUDOS_REP_TOOLS_VERSION = '2026-11-06.3';
 
 const CFG = window.KUDOS_CONFIG || {};
 const SUPABASE_KEY = CFG.SUPABASE_PUBLISHABLE_KEY || CFG.SUPABASE_ANON_KEY || '';
@@ -232,7 +232,7 @@ if (!READY) {
       <div class="card rep-tool-card">
         <h3 style="margin-top:0">Delivery readiness</h3>
         <div id="kudos-notify-readiness" class="notice" aria-live="polite">Checking the email configuration…</div>
-        <p class="help" style="margin-top:9px">Only a generic KUDOS alert is emailed. Actual contribution details remain in KUDOS. An approved SMTP account must be configured by the hosting owner before notifications can be enabled. Flight Safety reporting must still follow authorised procedures.</p>
+        <p class="help" style="margin-top:9px">Only a generic KUDOS alert is emailed. Actual contribution details remain in KUDOS. When an SMTP sender is configured, you can test it while automatic sending is paused. Flight Safety reporting must still follow authorised procedures.</p>
       </div>
       <div class="card rep-tool-card">
         <h3 style="margin-top:0">Recipient routing</h3>
@@ -303,7 +303,8 @@ if (!READY) {
           : 'NOT CONFIGURED — recipient lists can be saved, but no email will be sent until an approved SMTP service is connected.');
       root.querySelectorAll('[data-kudos-notify-test]').forEach(btn=>{
         const type=btn.dataset.kudosNotifyTest;
-        btn.disabled=!ready || !(data.routes?.[type]||[]).length;
+        // A benign SMTP test must work while automatic alerts are still paused.
+        btn.disabled=!data.smtpConfigured || !(data.routes?.[type]||[]).length;
       });
       if(lastStatus){
         const displayNames={safety:'Flight Safety',rewards:'Recognition',innovation:'Innovation'};
@@ -352,7 +353,12 @@ if (!READY) {
         showStatus('Generic test email sent to '+result.recipientCount+' recipient(s).');
         display(await request('GET'));
       }catch(error){showStatus('Test not sent: '+String(error?.message||error),true);}
-      finally{btn.disabled=!ready;}
+      finally{
+        try {
+          const current=await request('GET');
+          display(current);
+        } catch {btn.disabled=true;}
+      }
     }));
   }
 

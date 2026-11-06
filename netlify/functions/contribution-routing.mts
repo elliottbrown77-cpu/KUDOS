@@ -77,7 +77,7 @@ export default async (req: Request) => {
     if(action==="test"){
       const type=String(body.type||"") as MailType;
       if(!TYPES.includes(type))return Response.json({error:"Choose a notification type"},{status:400});
-      if(!enabled())return Response.json({error:"Delivery is not enabled. Configure an approved SMTP sender and set KUDOS_EMAIL_DELIVERY_ENABLED=true."},{status:503});
+      if(!configured())return Response.json({error:"An approved SMTP sender has not been configured."},{status:503});
       const info=await statusPayload();
       const recipients=info.routes[type];
       if(!recipients?.length)return Response.json({error:"Save at least one recipient for this type"},{status:400});
@@ -86,12 +86,24 @@ export default async (req: Request) => {
         return Response.json({error:"Please allow one minute between test messages for this category"},{status:429});
       const port=Number(process.env.KUDOS_SMTP_PORT||587);
       if(!Number.isInteger(port)||port<1||port>65535)throw new Error("Invalid SMTP port");
-      const smtp=nodemailer.createTransport({host:process.env.KUDOS_SMTP_HOST,port,
-        secure:port===465,auth:{user:process.env.KUDOS_SMTP_USER,pass:process.env.KUDOS_SMTP_PASS}});
-      await smtp.sendMail({from:process.env.KUDOS_EMAIL_FROM||process.env.KUDOS_SMTP_USER,
-        to:recipients.join(", "),
-        subject:"KUDOS notification routing test — "+type,
-        text:"This is a KUDOS routing test. No contribution information or personal data is included.\n\nKUDOS: https://chfkudos.netlify.app/"});
+      const smtp=nodemailer.createTransport({
+        host:process.env.KUDOS_SMTP_HOST,port,
+        secure:port===465,requireTLS:port!==465,
+        tls:{minVersion:"TLSv1.2"},
+        connectionTimeout:7000,greetingTimeout:7000,socketTimeout:7000,
+        auth:{user:process.env.KUDOS_SMTP_USER,pass:process.env.KUDOS_SMTP_PASS}
+      });
+      try {
+        await smtp.sendMail({from:{
+            name:"KUDOS Human Performance",address:process.env.KUDOS_EMAIL_FROM||process.env.KUDOS_SMTP_USER||""
+          },to:recipients.join(", "),
+          subject:"KUDOS notification routing test — "+type,
+          text:"This is a KUDOS routing test. No contribution information or personal data is included.\n\nKUDOS: https://chfkudos.netlify.app/",
+          disableFileAccess:true,disableUrlAccess:true
+        });
+      } finally {
+        smtp.close();
+      }
       await store().setJSON("status-"+type,{lastTestAt:new Date().toISOString(),lastResult:"test_sent"});
       return Response.json({ok:true,recipientCount:recipients.length,testSent:true});
     }
