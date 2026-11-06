@@ -32,6 +32,11 @@ function normalise(value: unknown): Routes {
   }
   return out;
 }
+function initialRoutes(): Routes {
+  const raw=process.env.KUDOS_NOTIFICATION_DEFAULT_ROUTES||"";
+  if (!raw) return normalise({});
+  return normalise(JSON.parse(raw));
+}
 async function requireAdmin(req: Request) {
   const auth=req.headers.get("authorization") || "";
   if (!auth.startsWith("Bearer ")) throw new Error("UNAUTHENTICATED");
@@ -51,10 +56,10 @@ async function requireAdmin(req: Request) {
 async function statusPayload() {
   const s=store();
   const saved=await s.get("routes",{type:"json"}) as {routes?:Routes,updatedAt?:string}|null;
-  const routes=normalise(saved?.routes || {safety:[],innovation:[],rewards:[]});
+  const routes=normalise(saved?.routes || initialRoutes());
   const health:Record<string,unknown>={};
   for(const type of TYPES) health[type]=await s.get("status-"+type,{type:"json"});
-  return {ok:true,routes,routesSaved:!!saved,updatedAt:saved?.updatedAt||null,
+  return {ok:true,routes,routesSaved:!!saved||!!process.env.KUDOS_NOTIFICATION_DEFAULT_ROUTES,updatedAt:saved?.updatedAt||null,
     smtpConfigured:configured(),deliveryEnabled:enabled(),health};
 }
 export default async (req: Request) => {

@@ -93,3 +93,11 @@ RNWSA's own sending flag is never changed.
 For production SMTP, KUDOS requires STARTTLS for port 587, enforces minimum
 TLS 1.2, uses a 7-second connection timeout and closes the connection after
 each send. It sends generic notices only.
+
+## One-off SES smoke test
+A temporary, production-only Netlify deploy event validates SMTP and sends
+one generic test email to a previously configured personal-mail recipient.
+The event is gated by `KUDOS_SES_SMOKE_ENABLED`, uses a fixed one-shot marker
+stored in Netlify Blobs, and never reads or transmits contribution records.
+The temporary function and test variables must be removed after verification.
+Amazon SES accepting a message does not guarantee its final delivery.

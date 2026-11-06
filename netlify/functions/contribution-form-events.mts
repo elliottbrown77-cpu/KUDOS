@@ -12,15 +12,15 @@ const matchForm:Record<string,string>={
 function contributionType(event: any): string | null {
   const data=event?.data||{};
   // Ignore the second, aggregate audit form. Otherwise notifications duplicate.
-  const form=String(event?.form?.name||event?.formName||event?.name||data["form-name"]||"");
+  const form=String(event?.form?.name||event?.formName||data["form-name"]||"");
   if(form==="kudos-contributions"||form==="kudos-contribution")return null;
   if(matchForm[form])return matchForm[form];
   if(form)return null;
   // Older events may omit the form name; infer only from an unmistakable form schema.
   if("report_type" in data)return null;
   if("nominated_person" in data&&"reason" in data)return "rewards";
-  if("external_reference" in data&&"category" in data)return "safety";
   if("title" in data&&"category" in data&&"description" in data)return "innovation";
+  if("category" in data&&"description" in data&&!("title" in data))return "safety";
   return null;
 }
 async function record(type:string, result:string) {
@@ -34,7 +34,17 @@ export default {
     if(!type)return;
     const routing=getStore("kudos-contribution-routing",{consistency:"strong"});
     const saved=await routing.get("routes",{type:"json"}) as any;
-    const recipients=Array.isArray(saved?.routes?.[type])?saved.routes[type]:[];
+    const seed=process.env.KUDOS_NOTIFICATION_DEFAULT_ROUTES;
+    let initial:Record<string,unknown>={};
+    if(!saved && seed){
+      try{initial=JSON.parse(seed);}
+      catch(e){console.error("KUDOS default notification routes are invalid");return;}
+    }
+    // Existing saved Admin routes always take precedence, including an empty list.
+    const source=saved?.routes||initial;
+    const recipients=Array.isArray(source?.[type])?
+      [...new Set(source[type].map((v:unknown)=>String(v||"").trim().toLowerCase()))]
+        .filter((email:string)=>email.length<=254&&/^[^\s@,;]+@[^\s@,;]+\.[^\s@,;]+$/.test(email)).slice(0,20):[];
     if(!recipients.length){await record(type,"no_recipients");return;}
     const configured=Boolean(process.env.KUDOS_SMTP_HOST&&process.env.KUDOS_SMTP_USER&&
       process.env.KUDOS_SMTP_PASS&&(process.env.KUDOS_EMAIL_FROM||process.env.KUDOS_SMTP_USER));
