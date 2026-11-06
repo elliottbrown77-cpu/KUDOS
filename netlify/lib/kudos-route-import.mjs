@@ -1,10 +1,10 @@
-// One-time import of previously confirmed recipient addresses into the
+// One-time import of original Netlify Form notification recipient addresses into the
 // administrator-managed Netlify Blobs routing store. No email addresses live
 // in source control: the additions are a production-only secret environment
 // variable. Future Admin edits work normally after the one-time marker.
 const TYPES=["safety","innovation","rewards"];
-const MARKER="verified-legacy-form-recipients-v1";
-const KEY="KUDOS_VERIFIED_LEGACY_RECIPIENT_IMPORT_V1";
+const MARKER="verified-legacy-form-recipients-v2";
+const KEY="KUDOS_VERIFIED_LEGACY_RECIPIENT_IMPORT_V2";
 const ADDRESS=/^[^\s@,;]+@[^\s@,;]+\.[^\s@,;]+$/;
 function normalise(obj){
   if(!obj||typeof obj!=="object"||Array.isArray(obj))obj={};
@@ -35,6 +35,6 @@ export async function loadContributionRoutes(store,defaults={}){
   }
   const updated={routes:merged,updatedAt:new Date().toISOString()};
   await store.setJSON("routes",updated);
-  await store.setJSON(MARKER,{completedAt:updated.updatedAt,importedFrom:"verified-prior-form-recipient-instructions"});
+  await store.setJSON(MARKER,{completedAt:updated.updatedAt,importedFrom:"verified-netlify-notification-screenshot-20261106"});
   return {routes:merged,saved:updated,imported:true};
 }

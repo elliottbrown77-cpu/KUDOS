@@ -97,3 +97,36 @@ active legacy notification rules.
 
 Existing built-in Netlify email hooks may still produce duplicate messages,
 independently of the KUDOS SES workflow.
+
+## Netlify Forms recipient reconciliation — 6 November 2026 (complete from screenshot)
+
+The user provided a screenshot of the four built-in Netlify Form submission
+notification rules. Three are category-specific and have been matched to
+KUDOS's new Amazon SES routing:
+
+- kudos-safety: 4 addresses in the screenshot; retain existing personal email
+  recipient, giving 5 addresses in KUDOS.
+- kudos-recognition: 3 addresses in the screenshot; retain existing personal
+  email recipient, giving 4 addresses in KUDOS.
+- kudos-innovation: 4 addresses in the screenshot; retain existing personal
+  email recipient, giving 5 addresses in KUDOS.
+- kudos-contributions: one aggregate-notification address, also present in
+  every category above. **Do not create a second SES route** for the aggregate
+  form; it is already ignored by the verified-form email handler.
+
+The source of this mapping is the user-provided screenshot; address values
+are held in a protected, production-only Functions secret
+`KUDOS_VERIFIED_LEGACY_RECIPIENT_IMPORT_V2`, not source control. The v2
+migration merges the screenshot lists with the existing active Netlify Blobs
+settings, deduplicates case-insensitively, and saves a completion marker to
+avoid re-importing recipients after the admin changes them. Matching lists in
+`public.contribution_email_routes` were updated as the legacy mirror.
+
+**Avoid duplicated notification emails:** The original native Netlify
+Form submission email notification rules remain active unless removed in
+Netlify. They cannot be changed by the connected Netlify tools. Once the SES
+routes are verified, remove the FOUR legacy *email notification rules only*
+from Netlify > Forms > Form submission notifications. Leave Forms processing
+enabled; it drives the KUDOS event handler. Until these rules are removed,
+some recipients will receive both the old Netlify message and the new branded
+SES message.
