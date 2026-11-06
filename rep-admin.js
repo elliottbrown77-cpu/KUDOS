@@ -1,4 +1,4 @@
-const KUDOS_REP_TOOLS_VERSION = '2026-11-06.6';
+const KUDOS_REP_TOOLS_VERSION = '2026-11-06.7';
 
 const CFG = window.KUDOS_CONFIG || {};
 const SUPABASE_KEY = CFG.SUPABASE_PUBLISHABLE_KEY || CFG.SUPABASE_ANON_KEY || '';
@@ -338,7 +338,15 @@ if (!READY) {
       const response=await request('GET');
       const initial=response.routesSaved?response.routes:legacy;
       for(const type of types)if(field(type))field(type).value=(initial?.[type]||[]).join('\n');
-      if(!response.routesSaved)showStatus('Existing recipient settings have been loaded where available. Review them and select Save to activate these routes.');
+      const counts=types.map(type=>(initial?.[type]||[]).length);
+      if(response.recipientsReconciled)
+        showStatus('Previously missing recipients restored to live routing. Flight Safety: '+
+          counts[0]+', Recognition: '+counts[1]+', Innovation: '+counts[2]+'.');
+      else if(!response.routesSaved)
+        showStatus('Existing recipient settings were loaded. Review and select Save to activate these routes.');
+      else
+        showStatus('Live recipients loaded — Flight Safety: '+counts[0]+
+          ', Recognition: '+counts[1]+', Innovation: '+counts[2]+'.');
       if(saveBtn)saveBtn.disabled=false;
       display(response);
     }catch(error){

@@ -3,7 +3,7 @@
 // in source control: the additions are a production-only secret environment
 // variable. Future Admin edits work normally after the one-time marker.
 const TYPES=["safety","innovation","rewards"];
-const MARKER="verified-legacy-form-recipients-v2";
+const MARKER="verified-legacy-form-recipients-v3";
 const KEY="KUDOS_VERIFIED_LEGACY_RECIPIENT_IMPORT_V2";
 const ADDRESS=/^[^\s@,;]+@[^\s@,;]+\.[^\s@,;]+$/;
 function normalise(obj){
