@@ -1,4 +1,4 @@
-const KUDOS_REP_TOOLS_VERSION = '2026-11-06.4';
+const KUDOS_REP_TOOLS_VERSION = '2026-11-06.5';
 
 const CFG = window.KUDOS_CONFIG || {};
 const SUPABASE_KEY = CFG.SUPABASE_PUBLISHABLE_KEY || CFG.SUPABASE_ANON_KEY || '';
@@ -245,6 +245,7 @@ if (!READY) {
                 placeholder="recipient@mod.gov.uk" autocapitalize="none" spellcheck="false"></textarea>
               <div class="help">${help}</div>
               <button class="btn ghost compact" type="button" data-kudos-notify-test="${id}" disabled>Send test notification</button>
+              <div class="help" data-kudos-notify-availability="${id}" aria-live="polite">Checking saved recipients…</div>
             </div>
           `).join('')}
           <button type="submit" class="btn primary" id="kudos-notify-save" disabled>Save notification recipients</button>
@@ -303,8 +304,16 @@ if (!READY) {
           : 'NOT CONFIGURED — recipient lists can be saved, but no email will be sent until an approved SMTP service is connected.');
       root.querySelectorAll('[data-kudos-notify-test]').forEach(btn=>{
         const type=btn.dataset.kudosNotifyTest;
-        // A benign SMTP test must work while automatic alerts are still paused.
-        btn.disabled=!data.smtpConfigured || !(data.routes?.[type]||[]).length;
+        const count=Array.isArray(data.routes?.[type])?data.routes[type].length:0;
+        // Do not grey out the test because recipients are missing: explain how
+        // to resolve it, and allow a click to import the existing approved list.
+        btn.disabled=!data.smtpConfigured;
+        const info=root.querySelector('[data-kudos-notify-availability="'+type+'"]');
+        if(info)info.textContent=count
+          ? count+' saved recipient'+(count===1?'':'s')+' ready for a harmless test.'
+          : (Array.isArray(legacy[type])&&legacy[type].length
+            ? 'No active recipients in this category. Send test will restore the previously saved recipient list before testing.'
+            : 'No recipients saved. Enter an email address above; Send test will save it first.');
       });
       if(lastStatus){
         const displayNames={safety:'Flight Safety',rewards:'Recognition',innovation:'Innovation'};
@@ -357,8 +366,32 @@ if (!READY) {
     root.querySelectorAll('[data-kudos-notify-test]').forEach(btn=>btn.addEventListener('click',async()=>{
       btn.disabled=true;
       try{
-        const result=await request('POST',{action:'test',type:btn.dataset.kudosNotifyTest});
-        showStatus('Generic test email sent to '+result.recipientCount+' recipient(s).');
+        const type=btn.dataset.kudosNotifyTest;
+        const current=await request('GET');
+        if(!(current.routes?.[type]||[]).length){
+          // Existing SQL recipients are a safe fallback when an older Netlify
+          // Blobs route was empty; never send to an arbitrary invisible address.
+          const typed=addresses(field(type)?.value);
+          const previous=addresses((legacy[type]||[]).join('\n'));
+          const recipients=typed.length?typed:previous;
+          if(!recipients.length)throw new Error(
+            'No recipients are configured for '+type+'. Enter an email address in the box above and try again.'
+          );
+          const updated=Object.fromEntries(types.map(key=>[key,current.routes?.[key]||[]]));
+          updated[type]=recipients;
+          await request('POST',{action:'save',routes:updated});
+          field(type).value=recipients.join('\n');
+          // Retain the recipient mirror for existing administration tools.
+          const {data:{session}}=await db.auth.getSession();
+          const {error:mirrorError}=await db.from('contribution_email_routes').upsert(
+            [{contribution_type:type,recipients,updated_by:session?.user?.id||null,updated_at:new Date().toISOString()}],
+            {onConflict:'contribution_type'}
+          );
+          if(mirrorError)console.warn('KUDOS recipient mirror not updated');
+        }
+        const result=await request('POST',{action:'test',type});
+        showStatus('Amazon SES accepted a generic test email for '+result.recipientCount+
+          ' recipient(s). Please confirm that it arrived in the inbox.');
         display(await request('GET'));
       }catch(error){showStatus('Test not sent: '+String(error?.message||error),true);}
       finally{

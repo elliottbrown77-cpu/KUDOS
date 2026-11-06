@@ -110,3 +110,16 @@ recipient secret variables removed. The resulting generic state (where present)
 remains visible to Workspace Admins in Notifications. Automatic contribution
 delivery remains explicitly disabled; a missing inbox receipt must never be
 reported as successful delivery.
+
+## Recipient test button usability fix (6 November 2026)
+The SMTP test buttons remain available when SMTP is configured even when
+no active recipients are recorded for one category. The Admin screen now
+explains the active recipient count rather than silently greying out a button.
+An explicit `Send test notification` click with zero active recipients
+restores that category's previous authorised SQL recipient list if present,
+or uses the email address typed into the corresponding field, saves it to the
+live route store, then sends **only a generic harmless SMTP test**. Other
+categories remain unchanged. SMTP configured and automatic notifications
+enabled are deliberately separate states, and the test action remains
+one-per-minute rate limited on the server. The UI does not claim actual
+inbox delivery merely because SMTP accepted a message.
