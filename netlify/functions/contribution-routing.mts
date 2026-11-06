@@ -1,6 +1,7 @@
 import { getStore, getDeployStore } from "@netlify/blobs";
 import nodemailer from "nodemailer";
 import {renderContributionEmail,exampleContribution} from "../lib/kudos-email-template.mjs";
+import {loadContributionRoutes} from "../lib/kudos-route-import.mjs";
 
 const SUPABASE_URL = "https://yzrzlexarwgpsqgxbrzn.supabase.co";
 const SUPABASE_KEY = "sb_publishable_tmv3lizHLy9tYrGyG_BwPw_4IHXEIow";
@@ -56,8 +57,7 @@ async function requireAdmin(req: Request) {
 }
 async function statusPayload() {
   const s=store();
-  const saved=await s.get("routes",{type:"json"}) as {routes?:Routes,updatedAt?:string}|null;
-  const routes=normalise(saved?.routes || initialRoutes());
+  const {saved,routes}=await loadContributionRoutes(s,initialRoutes());
   const health:Record<string,unknown>={};
   for(const type of TYPES) health[type]=await s.get("status-"+type,{type:"json"});
   const smoke=await s.get("ses-smoke-test",{type:"json"}) as {state?:string,at?:string}|null;

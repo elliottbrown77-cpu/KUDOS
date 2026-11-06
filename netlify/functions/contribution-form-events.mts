@@ -1,6 +1,7 @@
 import { getStore } from "@netlify/blobs";
 import nodemailer from "nodemailer";
 import {renderContributionEmail} from "../lib/kudos-email-template.mjs";
+import {loadContributionRoutes} from "../lib/kudos-route-import.mjs";
 
 // Event handlers are invoked only after Netlify has verified a form submission.
 // Include all verified form submission details in the branded email.
@@ -29,20 +30,25 @@ async function record(type:string, result:string) {
   await routing.setJSON("status-"+type,{lastAttemptAt:new Date().toISOString(),lastResult:result});
 }
 export default {
+  async deploySucceeded(){
+    if(process.env.CONTEXT!=="production")return;
+    const routing=getStore("kudos-contribution-routing",{consistency:"strong"});
+    const seed=process.env.KUDOS_NOTIFICATION_DEFAULT_ROUTES;
+    const defaults=seed?JSON.parse(seed):{};
+    await loadContributionRoutes(routing,defaults);
+  },
   async formSubmitted(event:any) {
     if(process.env.CONTEXT!=="production")return;
     const type=contributionType(event);
     if(!type)return;
     const routing=getStore("kudos-contribution-routing",{consistency:"strong"});
-    const saved=await routing.get("routes",{type:"json"}) as any;
     const seed=process.env.KUDOS_NOTIFICATION_DEFAULT_ROUTES;
     let initial:Record<string,unknown>={};
-    if(!saved && seed){
+    if(seed){
       try{initial=JSON.parse(seed);}
       catch(e){console.error("KUDOS default notification routes are invalid");return;}
     }
-    // Existing saved Admin routes always take precedence, including an empty list.
-    const source=saved?.routes||initial;
+    const {routes:source}=await loadContributionRoutes(routing,initial);
     const recipients=Array.isArray(source?.[type])?
       [...new Set(source[type].map((v:unknown)=>String(v||"").trim().toLowerCase()))]
         .filter((email:string)=>email.length<=254&&/^[^\s@,;]+@[^\s@,;]+\.[^\s@,;]+$/.test(email)).slice(0,20):[];

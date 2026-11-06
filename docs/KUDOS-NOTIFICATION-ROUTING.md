@@ -73,3 +73,27 @@ emails. Check for duplicates in Netlify; do not disable Netlify Forms capture.
 - Submit a legitimate new entry in an authorised test context and verify
   one full-content HTML notification is sent.
 - Ensure recipient management and test sending are restricted to Admin users.
+
+## 6 November 2026 — legacy recipient reconciliation (partial)
+
+The initial protected KUDOS routing did not include every address previously
+requested for Netlify Form notifications. A separate, already specified MOD
+recipient for all three categories was merged into the SQL settings and queued
+for a one-off import into the active Netlify Blobs routing. The import is held
+in a production-only secret variable, and the importer does not embed personal
+email addresses in the public GitHub source. It preserves existing recipients
+and uses a persistent completion marker so admins can edit the result
+normally afterwards.
+
+**Completeness limitation:** Netlify Form notification email hooks are not
+available through the currently connected Netlify API tools. Two additional
+external MOD addresses were previously attempted in the Netlify notification
+editor but rejected for not being Netlify team members; their specific form
+routing was not established. They have NOT been assigned to categories by
+guesswork. Obtain the actual Netlify Forms > Submission notifications list
+(or Netlify API GET /api/v1/hooks?site_id=...) and reconcile per-form addresses
+before declaring migration complete. Do not assume rejected edits became
+active legacy notification rules.
+
+Existing built-in Netlify email hooks may still produce duplicate messages,
+independently of the KUDOS SES workflow.
