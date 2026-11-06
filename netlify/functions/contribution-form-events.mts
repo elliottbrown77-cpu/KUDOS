@@ -2,6 +2,7 @@ import { getStore } from "@netlify/blobs";
 import nodemailer from "nodemailer";
 import {renderContributionEmail} from "../lib/kudos-email-template.mjs";
 import {loadContributionRoutes} from "../lib/kudos-route-import.mjs";
+import {isKudosProductionRuntime} from "../lib/kudos-runtime.mjs";
 
 // Event handlers are invoked only after Netlify has verified a form submission.
 // Include all verified form submission details in the branded email.
@@ -31,14 +32,14 @@ async function record(type:string, result:string) {
 }
 export default {
   async deploySucceeded(){
-    if(process.env.CONTEXT!=="production")return;
+    if(!isKudosProductionRuntime())return;
     const routing=getStore("kudos-contribution-routing",{consistency:"strong"});
     const seed=process.env.KUDOS_NOTIFICATION_DEFAULT_ROUTES;
     const defaults=seed?JSON.parse(seed):{};
     await loadContributionRoutes(routing,defaults);
   },
   async formSubmitted(event:any) {
-    if(process.env.CONTEXT!=="production")return;
+    if(!isKudosProductionRuntime())return;
     const type=contributionType(event);
     if(!type)return;
     const routing=getStore("kudos-contribution-routing",{consistency:"strong"});

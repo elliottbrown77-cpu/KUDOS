@@ -2,6 +2,7 @@ import { getStore, getDeployStore } from "@netlify/blobs";
 import nodemailer from "nodemailer";
 import {renderContributionEmail,exampleContribution} from "../lib/kudos-email-template.mjs";
 import {loadContributionRoutes} from "../lib/kudos-route-import.mjs";
+import {isKudosProductionRuntime} from "../lib/kudos-runtime.mjs";
 
 const SUPABASE_URL = "https://yzrzlexarwgpsqgxbrzn.supabase.co";
 const SUPABASE_KEY = "sb_publishable_tmv3lizHLy9tYrGyG_BwPw_4IHXEIow";
@@ -10,7 +11,7 @@ type MailType = typeof TYPES[number];
 type Routes = Record<MailType,string[]>;
 
 function store() {
-  return process.env.CONTEXT === "production"
+  return isKudosProductionRuntime()
     ? getStore("kudos-contribution-routing", { consistency: "strong" })
     : getDeployStore("kudos-contribution-routing");
 }
@@ -61,7 +62,7 @@ async function requireAdmin(req: Request) {
 async function reconcileSqlRecipients(req: Request, s: ReturnType<typeof store>,
   saved: {routes?:Routes,updatedAt?:string}|null, routes: Routes) {
   const key="notification-recipient-sql-reconciliation-v3";
-  if(process.env.CONTEXT!=="production" || await s.get(key,{type:"json"}))
+  if(!isKudosProductionRuntime() || await s.get(key,{type:"json"}))
     return {saved,routes,reconciled:false};
   const auth=req.headers.get("authorization")||"";
   if(!auth.startsWith("Bearer "))return {saved,routes,reconciled:false};

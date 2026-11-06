@@ -130,3 +130,25 @@ from Netlify > Forms > Form submission notifications. Leave Forms processing
 enabled; it drives the KUDOS event handler. Until these rules are removed,
 some recipients will receive both the old Netlify message and the new branded
 SES message.
+
+## Runtime production-context correction — 6 November 2026
+
+A live deploy-event diagnostic confirmed the Netlify Function runtime had
+`process.env.CONTEXT === undefined` and `DEPLOY_CONTEXT === undefined`,
+even though the production-only Functions-scoped Netlify variables were
+available. The previous code incorrectly relied exclusively on
+`CONTEXT === "production"` to select the persistent global Netlify Blobs
+store and execute recipient migration. It therefore read a deploy-scoped
+empty store and displayed the original fallback routes (1 / 1 / 2).
+
+`KUDOS_PRODUCTION_RUNTIME=true` is now set in **Production / Functions**
+only. The shared `isKudosProductionRuntime` helper uses this setting,
+with a compatibility fallback for runtimes that supply `CONTEXT`.
+Both the Admin API and the verified form-submission event now use it.
+The full screenshot-verified recipients (5 / 4 / 5 after preserving
+pre-existing recipients) are merged into the persistent routing store.
+
+The automatic sender continues to require the independent production-only
+`KUDOS_EMAIL_DELIVERY_ENABLED=true` flag and SMTP configuration. Keep
+the extra runtime flag isolated to production, rather than exposing sender
+credentials or production routing in browser code.

@@ -1,3 +1,4 @@
+import {isKudosProductionRuntime} from "./kudos-runtime.mjs";
 // One-time import of original Netlify Form notification recipient addresses into the
 // administrator-managed Netlify Blobs routing store. No email addresses live
 // in source control: the additions are a production-only secret environment
@@ -22,7 +23,7 @@ export async function loadContributionRoutes(store,defaults={}){
   const saved=await store.get("routes",{type:"json"});
   const baseline=normalise(saved?.routes||defaults);
   const env=process.env[KEY];
-  if(!env||process.env.CONTEXT!=="production")
+  if(!env||!isKudosProductionRuntime())
     return {routes:baseline,saved,imported:false};
   const marker=await store.get(MARKER,{type:"json"});
   if(marker)return {routes:baseline,saved,imported:false};
