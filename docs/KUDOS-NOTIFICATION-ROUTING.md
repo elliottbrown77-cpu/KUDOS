@@ -101,3 +101,12 @@ The event is gated by `KUDOS_SES_SMOKE_ENABLED`, uses a fixed one-shot marker
 stored in Netlify Blobs, and never reads or transmits contribution records.
 The temporary function and test variables must be removed after verification.
 Amazon SES accepting a message does not guarantee its final delivery.
+
+## SES smoke-test cleanup
+
+The one-shot SES smoke-test sender has been removed from the live functions
+after its deployment attempt, and the production-only smoke test trigger and
+recipient secret variables removed. The resulting generic state (where present)
+remains visible to Workspace Admins in Notifications. Automatic contribution
+delivery remains explicitly disabled; a missing inbox receipt must never be
+reported as successful delivery.

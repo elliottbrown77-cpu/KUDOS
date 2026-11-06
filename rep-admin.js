@@ -1,4 +1,4 @@
-const KUDOS_REP_TOOLS_VERSION = '2026-11-06.3';
+const KUDOS_REP_TOOLS_VERSION = '2026-11-06.4';
 
 const CFG = window.KUDOS_CONFIG || {};
 const SUPABASE_KEY = CFG.SUPABASE_PUBLISHABLE_KEY || CFG.SUPABASE_ANON_KEY || '';
@@ -308,13 +308,21 @@ if (!READY) {
       });
       if(lastStatus){
         const displayNames={safety:'Flight Safety',rewards:'Recognition',innovation:'Innovation'};
+        const smoke=data.smokeTest;
+        const statusMessages={
+          accepted_by_smtp:'Amazon SES accepted the test message (inbox arrival still needs confirmation).',
+          smtp_failed:'SES test failed. Check SMTP credentials, sender identity and IAM permissions.',
+          missing_configuration:'SES test could not run because a setting was missing.',
+          started:'SES connection test began; no delivery confirmation is available.'
+        };
         lastStatus.innerHTML=types.map(type=>{
           const record=data.health?.[type]||{};
           const kind=String(record.lastResult||'No delivery attempt recorded').replace(/_/g,' ');
           const date=record.lastAttemptAt||record.lastTestAt||'';
           return '<div style="padding:5px 0"><strong>'+esc(displayNames[type])+':</strong> '+
             esc(kind)+(date?' — '+esc(new Date(date).toLocaleString('en-GB')):'')+'</div>';
-        }).join('');
+        }).join('')+(smoke?'<div style="padding:8px 0"><strong>SES connection test:</strong> '+
+          esc(statusMessages[smoke.status]||'No confirmed delivery status')+'</div>':'');
       }
     };
     try{

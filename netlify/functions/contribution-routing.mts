@@ -59,8 +59,10 @@ async function statusPayload() {
   const routes=normalise(saved?.routes || initialRoutes());
   const health:Record<string,unknown>={};
   for(const type of TYPES) health[type]=await s.get("status-"+type,{type:"json"});
+  const smoke=await s.get("ses-smoke-test",{type:"json"}) as {state?:string,at?:string}|null;
   return {ok:true,routes,routesSaved:!!saved||!!process.env.KUDOS_NOTIFICATION_DEFAULT_ROUTES,updatedAt:saved?.updatedAt||null,
-    smtpConfigured:configured(),deliveryEnabled:enabled(),health};
+    smtpConfigured:configured(),deliveryEnabled:enabled(),health,
+    smokeTest:smoke?{status:String(smoke.state||"unknown"),checkedAt:smoke.at||null}:null};
 }
 export default async (req: Request) => {
   if (!["GET","POST"].includes(req.method)) return Response.json({error:"Method not allowed"},{status:405});
