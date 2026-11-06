@@ -123,3 +123,25 @@ categories remain unchanged. SMTP configured and automatic notifications
 enabled are deliberately separate states, and the test action remains
 one-per-minute rate limited on the server. The UI does not claim actual
 inbox delivery merely because SMTP accepted a message.
+
+## Production activation — 6 November 2026
+
+The Workspace Administrator confirmed receipt of all three categories of
+harmless SMTP tests (Flight Safety, Recognition and Innovation) through the
+dedicated KUDOS Amazon SES SMTP account and confirmed authorisation for the
+generic MOD email route. The KUDOS Netlify Functions production-only setting
+`KUDOS_EMAIL_DELIVERY_ENABLED=true` was enabled.
+
+The application uses Netlify's verified `formSubmitted` event to send a
+generic alert from `membership@rnwsa.org` to the separately managed saved
+recipients for each specific form. The legacy aggregate audit form is ignored
+by the SES notification handler. This setting does **not** enable alerts in
+Netlify development, branch deploys or deploy previews.
+
+Operational follow-up: Netlify's legacy built-in notification rules cannot be
+listed or modified using the current Netlify connector. Review those rules in
+the Netlify UI and disable redundant email rules **only**, leaving Netlify
+Forms submission capture enabled. Verify that a new non-sensitive contribution
+generates one SES message and no unintended duplicate emails. The
+administrator's in-app 'Latest delivery checks' section shows outcomes for
+actual verified-form events, but manual test messages are a distinct operation.
