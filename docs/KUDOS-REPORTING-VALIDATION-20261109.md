@@ -75,3 +75,33 @@ Remembrance progress entries passed:
 - Simulated paged feed: all 2,671 records loaded in 6 pages.
 
 The production database was not changed by this release.
+
+## Follow-up — screenshot at 06:59 compared with 07:03 deploy
+
+The screenshot provided on 9 November at 06:59 shows the previous Reports
+layout: it has no combined-all-teams summary and lists Team 6 as 1 act, the
+others as 0. The verified report fix was not deployed until 07:03 UTC,
+so the screenshot necessarily predates that frontend release.
+
+Fresh live SQL subsequently reported **eight** Act Of Remembrance entries,
+rather than the seven reported in the previous audit: Team 4 = 1,
+Team 5 = 2, Team 6 = 3, Team 7 = 2, all other teams zero.
+There are six individual contributors. All eight entries are present
+in `progress_entries`, and the materialised `challenge_progress`
+rows still reconcile exactly with the raw entries across all 72 challenges.
+Public SELECT policies on `challenge_progress` and the entry feed
+are unrestricted to anon/authenticated, so the Reports mismatch is not
+explained by row-level visibility filtering.
+
+As a defence against repeats, Reports now:
+- Polls a visible Reports tab for fresh Supabase data when it has been
+  open for a minute or longer (while leaving other application views alone).
+- Checks the aggregate challenge totals against the independently loaded
+  complete progress-entry feed for the selected cross-team group.
+- Shows an explicit red-bordered `Report requires reconciliation` warning
+  whenever those values differ, rather than silently displaying
+  contradictory reports.
+
+These changes do not modify historical entry records, challenge targets,
+scores or the database schema. A JavaScript functional regression test
+passed for both 8/8 matching data and an intentionally mismatched 8/6 case.

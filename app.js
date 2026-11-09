@@ -1015,9 +1015,17 @@ function reportsView(){
   const combinedTotal=challengeRows.reduce((sum,r)=>sum+Number(r.actual||0),0);
   const contributingTeamCount=challengeRows.filter(r=>r.has&&Number(r.actual||0)>0).length;
   const selectedIds=new Set((selected?.challenges||[]).map(c=>c.id));
-  const recordedEntries=selected?.source_type==='progress'
-    ? (state.data.progressEntryFeed||[]).filter(x=>selectedIds.has(x.challenge_id)).length
+  const recordedRows=selected?.source_type==='progress'
+    ? (state.data.progressEntryFeed||[]).filter(x=>selectedIds.has(x.challenge_id))
     : null;
+  const recordedEntries=recordedRows?.length??null;
+  const recordedValue=recordedRows
+    ? recordedRows.reduce((sum,x)=>sum+Number(x.value||0),0)
+    : null;
+  // Compare two independent read models to avoid silently displaying
+  // conflicting figures when a browser is holding a stale report.
+  const reportReconciled=recordedValue===null||
+    Math.abs(recordedValue-combinedTotal)<0.00001;
   const distinctContributors=selected?groupTopIndividuals(selected,99999).length:0;
   const lastRefresh=state.lastDataRefreshAt
     ? new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/London',day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}).format(new Date(state.lastDataRefreshAt))
@@ -1049,6 +1057,7 @@ function reportsView(){
 
   <div class="section-title"><h2>Challenge team standings</h2><p>Teams alongside each other</p></div>
   <div class="card"><div class="field" style="margin-bottom:0"><label>Challenge</label><select id="reportChallenge">${groupOptions}</select></div></div>
+  ${selected&&!reportReconciled?'<div class="notice" role="alert" style="border:2px solid #a31e27;margin-top:12px"><strong>Report requires reconciliation.</strong> The submitted entries total '+fmt(recordedValue)+' '+esc(reportUnitForValue(selected.unit,recordedValue))+' but the team summaries total '+fmt(combinedTotal)+'. This report may be out of date. Select Refresh live report before using the standings.</div>':''}
   ${selected?'<div class="card" style="margin-top:12px;border-top:4px solid #435f46"><div class="help" style="font-size:12px;letter-spacing:.03em;text-transform:uppercase;font-weight:700">Combined result — all teams</div><div style="font-size:32px;font-weight:850;color:#0c2338;margin-top:5px">'+fmt(combinedTotal)+' '+esc(reportUnitForValue(selected.unit,combinedTotal))+'</div><div class="help" style="margin-top:6px">'+(recordedEntries===null?'':fmt(recordedEntries)+' recorded '+(recordedEntries===1?'entry':'entries')+' • ')+fmt(distinctContributors)+' '+(distinctContributors===1?'contributor':'contributors')+' • '+contributingTeamCount+' of '+challengeRows.filter(r=>r.has).length+' teams have contributed</div><div class="help" style="margin-top:8px">The values in the team cards below are individual team totals, not the total across KUDOS.</div></div>':''}
   ${selected?`<div class="section-title"><h2>${esc(selected.title)}</h2><p>${esc(selected.unit)} • ranked by percentage complete</p></div><div class="grid four report-team-grid">${challengeCards}</div>`:'<div class="empty">No active challenges yet.</div>'}
 
@@ -1613,5 +1622,10 @@ window.addEventListener('focus',()=>{
   if(state.view==='reports' && state.mode==='supabase' &&
       Date.now()-Number(state.lastDataRefreshAt||0)>60000)void refresh();
 });
+// Revalidate an open Reports tab every minute, without disrupting other views.
+window.setInterval(()=>{
+  if(state.view==='reports' && state.mode==='supabase' && !document.hidden &&
+      Date.now()-Number(state.lastDataRefreshAt||0)>60000)void refresh();
+},30000);
 if('serviceWorker' in navigator) navigator.serviceWorker.register('./service-worker.js?v=static-only-v20-20261106', {updateViaCache:'none'}).catch(()=>{});
 refresh();
