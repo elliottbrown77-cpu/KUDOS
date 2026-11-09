@@ -18,6 +18,7 @@ const state = {
   challengeFilter: 'all',
   progressMode: 'team',
   reportChallengeKey: '',
+  lastDataRefreshAt: null,
   data: null,
   notice: '',
   authUser: null,
@@ -90,6 +91,25 @@ async function loadAllProgressHistory(){
   throw new Error('Progress history exceeded the supported reporting range.');
 }
 
+async function loadAllProgressEntryFeed(){
+  const rows=[];
+  const pageSize=500;
+  // Load all recorded entries in deterministic order. A single Supabase
+  // select silently truncates at the project's 1,000-row API response cap.
+  for(let from=0;from<100000;from+=pageSize){
+    const {data,error}=await supabase.from('progress_entry_feed')
+      .select('id,profile_id,challenge_id,value,entry_date,note,created_at')
+      .order('entry_date',{ascending:false})
+      .order('created_at',{ascending:false})
+      .order('id',{ascending:false})
+      .range(from,from+pageSize-1);
+    if(error)throw error;
+    rows.push(...(data||[]));
+    if(!data||data.length<pageSize)return {data:rows,error:null};
+  }
+  throw new Error('Progress entry feed exceeded the supported reporting range.');
+}
+
 async function loadSupabase(){
   const [teams,profiles,challenges,psfs,challengePsfs,challengeProgress,profileTotals,profileScores,teamScores,progressHistory,progressEntryFeed,achievementTotals,weeklyActivity,weeklyPsfEngagement,currentWeekHistory] = await Promise.all([
     supabase.from('teams').select('*').order('name'),
@@ -103,7 +123,7 @@ async function loadSupabase(){
     supabase.from('profile_scores').select('*'),
     supabase.from('team_scores').select('*'),
     loadAllProgressHistory(),
-    supabase.from('progress_entry_feed').select('*').order('entry_date',{ascending:false}).order('created_at',{ascending:false}),
+    loadAllProgressEntryFeed(),
     supabase.from('profile_achievement_totals').select('*'),
     supabase.from('profile_weekly_activity').select('*').order('week_start'),
     // These tables grow every week; fetching the whole PSF table exceeded the 1,000-row API cap.
@@ -212,6 +232,7 @@ async function refresh(){
     if(state.mode==='supabase') await loadAdminSession();
     state.data = state.mode==='demo' ? loadDemo() : await loadSupabase();
     if(state.mode==='supabase' && isFullAdmin()) state.data.adminEntries = await loadAdminEntries();
+    state.lastDataRefreshAt = Date.now();
 
     // A normal KUDOS profile is deliberately remembered only in this browser/device.
     // Never fall back to the first database profile on a new device.
@@ -885,7 +906,15 @@ function singleChallengeProgress(c,profileId){
 
 
 function challengeGroupKey(c){
+  // Canonical cross-team challenge IDs take precedence over editable titles.
+  // This keeps reports together even if an individual team renames a challenge.
+  if(c.challenge_group_id)return 'group:'+String(c.challenge_group_id)+'|'+String(c.source_type||'progress').toLowerCase();
   return [String(c.title||'').trim().toLowerCase(),String(c.unit||'').trim().toLowerCase(),String(c.source_type||'progress').trim().toLowerCase()].join('|');
+}
+function reportUnitForValue(unit,value){
+  const name=String(unit||'').trim();
+  if(/^one act$/i.test(name))return Number(value)===1?'act':'acts';
+  return name;
 }
 function challengeGroups(){
   const map=new Map();
@@ -983,22 +1012,33 @@ function reportsView(){
   const overall=overallTeamReportRows();
   const kudosTeams=kudosTeamReportRows();
   const challengeRows=selected?groupTeamRows(selected):[];
+  const combinedTotal=challengeRows.reduce((sum,r)=>sum+Number(r.actual||0),0);
+  const contributingTeamCount=challengeRows.filter(r=>r.has&&Number(r.actual||0)>0).length;
+  const selectedIds=new Set((selected?.challenges||[]).map(c=>c.id));
+  const recordedEntries=selected?.source_type==='progress'
+    ? (state.data.progressEntryFeed||[]).filter(x=>selectedIds.has(x.challenge_id)).length
+    : null;
+  const distinctContributors=selected?groupTopIndividuals(selected,99999).length:0;
+  const lastRefresh=state.lastDataRefreshAt
+    ? new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/London',day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}).format(new Date(state.lastDataRefreshAt))
+    : 'Not yet refreshed';
   const topOverall=topKudosIndividuals(5);
   const groupOptions=groups.map(g=>`<option value="${esc(g.key)}" ${g.key===selected?.key?'selected':''}>${esc(g.title)} — ${esc(g.unit)}</option>`).join('');
 
   const overallRows=overall.map(r=>`<tr><td>${rankPill(r.rank)}</td><td><strong>${esc(r.name)}</strong></td><td>${r.challengeCount?pct(r.avg):'—'}${r.challengeCount?reportProgressBar(r.avg):''}</td><td>${r.completed}/${r.challengeCount}</td><td>${fmt(r.kudos)}</td><td>${r.people}</td></tr>`).join('');
   const kudosRows=kudosTeams.map(r=>`<tr><td>${rankPill(r.rank)}</td><td><strong>${esc(r.name)}</strong></td><td><strong>${fmt(r.kudos)}</strong></td><td>${r.people}</td></tr>`).join('');
-  const challengeCards=challengeRows.map(r=>`<div class="card team-rank-card ${r.rank===1?'leader-card':''}"><div class="team-rank-head"><div>${rankPill(r.rank)}<strong>${esc(r.name)}</strong></div><span>${r.has?pct(r.completion):'Not set'}</span></div>${r.has?`${reportProgressBar(r.completion)}<div class="progress-line"><span><strong>${fmt(r.actual)}</strong> / ${fmt(r.target)} ${esc(selected.unit)}</span><span>${r.contributors} contributor${r.contributors===1?'':'s'}</span></div>`:`<div class="help">This team does not currently have a matching challenge.</div>`}</div>`).join('');
+  const challengeCards=challengeRows.map(r=>`<div class="card team-rank-card ${r.rank===1?'leader-card':''}"><div class="team-rank-head"><div>${rankPill(r.rank)}<strong>${esc(r.name)}</strong></div><span>${r.has?pct(r.completion):'Not set'}</span></div>${r.has?`${reportProgressBar(r.completion)}<div class="progress-line"><span><strong>${fmt(r.actual)}</strong> / ${fmt(r.target)} ${esc(reportUnitForValue(selected.unit,r.actual))}</span><span>${r.contributors} contributor${r.contributors===1?'':'s'}</span></div>`:`<div class="help">This team does not currently have a matching challenge.</div>`}</div>`).join('');
 
   const topByChallenge=groups.map(g=>{
     const top=groupTopIndividuals(g,9999);
-    const rows=top.map((r,i)=>`<tr class="${r.profile_id===state.profileId?'current-profile-row':''}"><td>${rankPill(i+1)}</td><td><strong>${esc(r.name)}</strong><div class="help">${esc(r.team)}${r.profile_id===state.profileId?' • You':''}</div></td><td class="num"><strong>${fmt(r.contribution)}</strong> ${esc(g.unit)}</td></tr>`).join('');
+    const rows=top.map((r,i)=>`<tr class="${r.profile_id===state.profileId?'current-profile-row':''}"><td>${rankPill(i+1)}</td><td><strong>${esc(r.name)}</strong><div class="help">${esc(r.team)}${r.profile_id===state.profileId?' • You':''}</div></td><td class="num"><strong>${fmt(r.contribution)}</strong> ${esc(reportUnitForValue(g.unit,r.contribution))}</td></tr>`).join('');
     return `<div class="card leaderboard-card"><div class="challenge-head"><div><h3>${esc(g.title)}</h3><div class="help">${esc(g.unit)} • ${g.challenges.length} team challenge${g.challenges.length===1?'':'s'}</div></div><span class="unit-badge">${top.length} contributors</span></div>${top.length?`<div class="mini-table contributor-scroll"><table><thead><tr><th>Rank</th><th>Individual</th><th>Contribution</th></tr></thead><tbody>${rows}</tbody></table></div>`:'<div class="empty compact-empty">No contributions yet.</div>'}</div>`;
   }).join('');
 
   const topOverallRows=topOverall.map((r,i)=>`<tr><td>${rankPill(i+1)}</td><td><strong>${esc(r.name)}</strong><div class="help">${esc(r.team)}</div></td><td>${kudosRankTag(r.profile_id,true)}</td><td class="num"><strong>${fmt(r.score)}</strong></td></tr>`).join('');
 
   return `<div class="section-title"><h2>Reports</h2><p>Individual contribution and team standings</p></div>
+  <div class="card report-freshness" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:16px"><span class="help">Live database report • Refreshed ${esc(lastRefresh)} (UK time)</span><button class="btn ghost compact" type="button" id="refreshReports">Refresh live report</button></div>
   <div class="report-intro card"><div><strong>How the overall lead is calculated</strong><div class="help">Overall challenge position uses each team's average percentage completion across its active challenges, capped at 100% per challenge. KUDOS points are shown separately.</div></div></div>
 
   <div class="section-title"><h2>Overall team standings</h2><p>Challenge performance and KUDOS score</p></div>
@@ -1009,6 +1049,7 @@ function reportsView(){
 
   <div class="section-title"><h2>Challenge team standings</h2><p>Teams alongside each other</p></div>
   <div class="card"><div class="field" style="margin-bottom:0"><label>Challenge</label><select id="reportChallenge">${groupOptions}</select></div></div>
+  ${selected?'<div class="card" style="margin-top:12px;border-top:4px solid #435f46"><div class="help" style="font-size:12px;letter-spacing:.03em;text-transform:uppercase;font-weight:700">Combined result — all teams</div><div style="font-size:32px;font-weight:850;color:#0c2338;margin-top:5px">'+fmt(combinedTotal)+' '+esc(reportUnitForValue(selected.unit,combinedTotal))+'</div><div class="help" style="margin-top:6px">'+(recordedEntries===null?'':fmt(recordedEntries)+' recorded '+(recordedEntries===1?'entry':'entries')+' • ')+fmt(distinctContributors)+' '+(distinctContributors===1?'contributor':'contributors')+' • '+contributingTeamCount+' of '+challengeRows.filter(r=>r.has).length+' teams have contributed</div><div class="help" style="margin-top:8px">The values in the team cards below are individual team totals, not the total across KUDOS.</div></div>':''}
   ${selected?`<div class="section-title"><h2>${esc(selected.title)}</h2><p>${esc(selected.unit)} • ranked by percentage complete</p></div><div class="grid four report-team-grid">${challengeCards}</div>`:'<div class="empty">No active challenges yet.</div>'}
 
   <div class="section-title"><h2>Individual challenge leaderboards</h2><p>All contributors ranked by recorded contribution</p></div>
@@ -1016,7 +1057,7 @@ function reportsView(){
 
   <div class="section-title"><h2>Top 5 overall KUDOS scores</h2><p>Across challenge activity, recognition, innovation and safety contributions</p></div>
   <div class="card leaderboard-card">${topOverallRows?`<div class="mini-table"><table><thead><tr><th>Rank</th><th>Individual</th><th>Status</th><th>KUDOS score</th></tr></thead><tbody>${topOverallRows}</tbody></table></div>`:'<div class="empty compact-empty">No scores yet.</div>'}</div>
-  <div class="notice" style="margin-top:14px">Challenge team comparisons currently group challenges when the <strong>challenge name, unit and contribution type match</strong>. If teams use different names for the same intended challenge, they will appear as separate challenge groups.</div>`;
+  <div class="notice" style="margin-top:14px">Challenge comparisons use the shared challenge-group ID when available. For older challenges without a group ID, matching name, unit and contribution type are used.</div>`;
 }
 
 
@@ -1464,7 +1505,14 @@ async function deleteAdminEntry(type,id){
 }
 
 function bind(){
-  document.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>{state.view=b.dataset.view;state.notice='';render()});
+  document.querySelectorAll('[data-view]').forEach(b=>b.onclick=async()=>{
+    const next=b.dataset.view;
+    state.view=next;state.notice='';
+    if(next==='reports' && state.mode==='supabase'){
+      document.getElementById('app').innerHTML='<div class="empty">Refreshing live KUDOS reports…</div>';
+      await refresh();
+    }else render();
+  });
   document.querySelector('[data-action="profile"]')?.addEventListener('click',()=>showModal(profileModal(false)));
   document.querySelector('[data-action="closeModal"]')?.addEventListener('click',()=>{if(currentProfile())closeModal()});
   document.querySelector('[data-action="newProfile"]')?.addEventListener('click',()=>showModal(newProfileModal()));
@@ -1491,6 +1539,11 @@ function bind(){
   document.getElementById('progressProfile')?.addEventListener('change',e=>{state.profileFilter=e.target.value;render()});
   document.getElementById('progressChallenge')?.addEventListener('change',e=>{state.challengeFilter=e.target.value;render()});
   document.getElementById('reportChallenge')?.addEventListener('change',e=>{state.reportChallengeKey=e.target.value;render()});
+  document.getElementById('refreshReports')?.addEventListener('click',async()=>{
+    const button=document.getElementById('refreshReports');
+    if(button){button.disabled=true;button.textContent='Refreshing…';}
+    await refresh();
+  });
   document.getElementById('adminLoginForm')?.addEventListener('submit',async e=>{e.preventDefault();try{await submitAdminLogin(new FormData(e.target))}catch(err){state.notice=`Could not sign in: ${err.message||err}`;render()}});
   document.getElementById('profileForm')?.addEventListener('submit',async e=>{e.preventDefault();try{await submitProfile(new FormData(e.target))}catch(err){state.notice=`Could not save: ${err.message||err}`;render()}});
   const syncProgressLogValueRules=()=>{
@@ -1556,5 +1609,9 @@ function bind(){
   document.getElementById('modal')?.addEventListener('click',e=>{if(e.target.id==='modal' && currentProfile())closeModal()});
 }
 
+window.addEventListener('focus',()=>{
+  if(state.view==='reports' && state.mode==='supabase' &&
+      Date.now()-Number(state.lastDataRefreshAt||0)>60000)void refresh();
+});
 if('serviceWorker' in navigator) navigator.serviceWorker.register('./service-worker.js?v=static-only-v20-20261106', {updateViaCache:'none'}).catch(()=>{});
 refresh();
