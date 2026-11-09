@@ -110,8 +110,27 @@ async function loadAllProgressEntryFeed(){
   throw new Error('Progress entry feed exceeded the supported reporting range.');
 }
 
+async function loadPublishedSafetyLog(){
+  const rows=[];
+  const pageSize=200;
+  // The security-invoker view and underlying RLS only expose entries whose
+  // manager follow-up status is actioning, resolved or closed.
+  for(let from=0;from<40000;from+=pageSize){
+    const {data,error}=await supabase.from('kudos_safety_log')
+      .select('id,profile_id,contributor_name,contributor_profile_code,team_id,team_name,team_nickname,category,description,external_reference,entry_date,created_at,status,manager_update,manager_updated_at')
+      .order('entry_date',{ascending:false})
+      .order('created_at',{ascending:false})
+      .order('id',{ascending:false})
+      .range(from,from+pageSize-1);
+    if(error)throw error;
+    rows.push(...(data||[]));
+    if(!data||data.length<pageSize)return {data:rows,error:null};
+  }
+  throw new Error('The published Safety Log exceeded its supported range.');
+}
+
 async function loadSupabase(){
-  const [teams,profiles,challenges,psfs,challengePsfs,challengeProgress,profileTotals,profileScores,teamScores,progressHistory,progressEntryFeed,achievementTotals,weeklyActivity,weeklyPsfEngagement,currentWeekHistory] = await Promise.all([
+  const [teams,profiles,challenges,psfs,challengePsfs,challengeProgress,profileTotals,profileScores,teamScores,progressHistory,progressEntryFeed,safetyLog,achievementTotals,weeklyActivity,weeklyPsfEngagement,currentWeekHistory] = await Promise.all([
     supabase.from('teams').select('*').order('name'),
     supabase.from('profiles').select('*').eq('active',true).order('name'),
     supabase.from('challenges').select('*').eq('active',true).order('start_date'),
@@ -124,6 +143,7 @@ async function loadSupabase(){
     supabase.from('team_scores').select('*'),
     loadAllProgressHistory(),
     loadAllProgressEntryFeed(),
+    loadPublishedSafetyLog(),
     supabase.from('profile_achievement_totals').select('*'),
     supabase.from('profile_weekly_activity').select('*').order('week_start'),
     // These tables grow every week; fetching the whole PSF table exceeded the 1,000-row API cap.
@@ -133,7 +153,7 @@ async function loadSupabase(){
     supabase.from('progress_history').select('challenge_id,profile_id,entry_date,daily_value')
       .gte('entry_date',weekStartISO()).lt('entry_date',shiftWeek(weekStartISO(),1))
   ]);
-  const err=[teams,profiles,challenges,psfs,challengePsfs,challengeProgress,profileTotals,profileScores,teamScores,progressHistory,progressEntryFeed,achievementTotals,weeklyActivity,weeklyPsfEngagement,currentWeekHistory].find(x=>x.error);
+  const err=[teams,profiles,challenges,psfs,challengePsfs,challengeProgress,profileTotals,profileScores,teamScores,progressHistory,progressEntryFeed,safetyLog,achievementTotals,weeklyActivity,weeklyPsfEngagement,currentWeekHistory].find(x=>x.error);
   if(err?.error) throw err.error;
   const psfMap = Object.fromEntries(psfs.data.map(x=>[x.id,x.name]));
   const cPsfs = {};
@@ -151,6 +171,7 @@ async function loadSupabase(){
     teamScores:teamScores.data,
     progressHistory:progressHistory.data,
     progressEntryFeed:progressEntryFeed.data||[],
+    safetyLog:safetyLog.data||[],
     achievementTotals:achievementTotals.data||[],
     weeklyActivity:weeklyActivity.data||[],
     weeklyPsfEngagement:weeklyPsfEngagement.data||[],
@@ -606,7 +627,7 @@ function header(){
   <button class="profile-chip" data-action="profile"><div>${esc(p?.name||'Select profile')}</div><span>${esc(p?teamName(p.team_id):'')}${rank?` • ${esc(rank.tag)}`:''}</span></button></header>`;
 }
 function nav(){
-  const items=[['home','⌂','Home'],['challenges','◎','Challenges'],['log','＋','Log'],['progress','↗','Progress'],['reports','▥','Reports'],['contribute','★','Contribute'],['rep','⚙','Admin/ Rep']];
+  const items=[['home','⌂','Home'],['challenges','◎','Challenges'],['log','＋','Log'],['progress','↗','Progress'],['reports','▥','Reports'],['safetylog','⚠','Safety Log'],['contribute','★','Contribute'],['rep','⚙','Admin/ Rep']];
   // Workspace Admins get a direct, always-visible route to the Thursday briefing.
   // It is a normal link, so it works in mobile PWAs as well as desktop browsers.
   const weeklyEnabled=state.mode==='supabase' && Boolean(state.authUser)
@@ -1097,6 +1118,59 @@ function myContributionUpdates(){
     <div class="grid two">${cards||'<div class="empty">You have no Safety, Innovation or Recognition contributions recorded yet.</div>'}</div>`;
 }
 
+function safetyLogView(){
+  // Only manager-approved publications arrive in this dataset; no unpublished
+  // submissions are loaded or hidden merely by a client-side UI filter.
+  const rows=state.mode==='supabase'
+    ? (state.data?.safetyLog||[])
+    : (state.data?.safety||[]).filter(x=>['actioning','resolved','closed'].includes(x.status));
+  const counts={
+    actioning:rows.filter(x=>x.status==='actioning').length,
+    resolved:rows.filter(x=>x.status==='resolved').length,
+    closed:rows.filter(x=>x.status==='closed').length
+  };
+  const cards=rows.map(x=>{
+    const team=x.team_nickname&&x.team_nickname!==x.team_name
+      ? x.team_name+' — '+x.team_nickname
+      : x.team_name||'Team not recorded';
+    const profile=String(x.contributor_name||'Unknown contributor');
+    const name=String(x.category||'Flight Safety observation');
+    const status=contributionStatusLabel(x.status);
+    const date=String(x.entry_date||x.created_at?.slice(0,10)||'Not recorded');
+    const desc=String(x.description||'');
+    const ref=String(x.external_reference||'').trim();
+    const update=String(x.manager_update||'').trim();
+    const lastUpdate=x.manager_updated_at
+      ? new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/London',year:'numeric',month:'short',day:'2-digit',hour:'2-digit',minute:'2-digit'}).format(new Date(x.manager_updated_at))
+      : '';
+    return `<article class="card safety-log-entry">
+      <div class="challenge-head safety-log-head">
+        <div><div class="eyebrow">FLIGHT SAFETY • ${esc(date)}</div><h3>${esc(name)}</h3></div>
+        <span class="unit-badge safety-log-status ${esc(x.status)}">${esc(status)}</span>
+      </div>
+      <div class="safety-log-meta"><span><strong>Submitted by</strong> ${esc(profile)}</span><span><strong>Team</strong> ${esc(team)}</span>${x.contributor_profile_code?'<span><strong>Profile code</strong> '+esc(x.contributor_profile_code)+'</span>':''}</div>
+      <div class="safety-log-section"><strong>Full safety contribution</strong><p class="safety-log-narrative">${esc(desc)}</p></div>
+      <div class="safety-log-section"><strong>External reference</strong><p class="safety-log-narrative">${esc(ref||'Not provided')}</p></div>
+      <div class="safety-log-section safety-log-manager"><strong>Safety manager update / action taken</strong>
+        <p class="safety-log-narrative">${esc(update||'The safety team has selected this item for action. No update has been recorded yet.')}</p>
+        ${lastUpdate?'<div class="help">Last updated: '+esc(lastUpdate)+' (UK time)</div>':''}
+      </div>
+      <div class="help">KUDOS entry reference: ${esc(x.id||'Not available')}</div>
+    </article>`;
+  }).join('');
+  return `<div class="section-title"><div><h2>Safety Log</h2><p>Safety contributions being actioned, resolved or closed across all KUDOS teams</p></div></div>
+    <div class="card safety-log-intro">
+      <div><strong>Share safety learning across the team</strong><p class="challenge-desc">Entries appear here only once a Safety Manager selects Actioning. Complete submitted details, references and manager updates are then available to everyone using KUDOS. Items remain visible when resolved or closed.</p></div>
+      <div class="actions">
+        <button class="btn safety-btn" type="button" data-special="safety">Raise a safety log entry</button>
+        <button class="btn ghost" type="button" id="refreshSafetyLog">Refresh Safety Log</button>
+      </div>
+      <div class="help" style="margin-top:12px">This is not a replacement for the authorised Flight Safety reporting system. Do not enter classified, protectively marked or otherwise security-sensitive details.</div>
+    </div>
+    <div class="safety-log-stats"><span><strong>${rows.length}</strong> published</span><span><strong>${counts.actioning}</strong> actioning</span><span><strong>${counts.resolved}</strong> resolved</span><span><strong>${counts.closed}</strong> closed</span></div>
+    <div class="safety-log-list">${cards||'<div class="card empty">No safety entries have been selected for Actioning yet. Submitted and Under Review entries are visible only to authorised managers.</div>'}</div>`;
+}
+
 function contributeView(){
   return `<div class="section-title"><h2>Contribute</h2><p>Safety, recognition and innovation</p></div>${contributionQuickActions(false)}
   <div class="notice" style="margin-top:14px">Every submission is recorded in KUDOS and submitted to the verified notification feed. Emails are sent only when approved sender settings are enabled; Flight Safety reports must still follow authorised procedures. Recognition, Innovation and Flight Safety are each worth 20 KUDOS.</div>
@@ -1299,7 +1373,7 @@ function animateHomeMetricNumbers(){
 }
 
 function page(){
-  const views={home:homeView,challenges:challengesView,log:()=>logView(),progress:progressView,reports:reportsView,contribute:contributeView,rep:repView};
+  const views={home:homeView,challenges:challengesView,log:()=>logView(),progress:progressView,reports:reportsView,safetylog:safetyLogView,contribute:contributeView,rep:repView};
   return `<div class="app-shell">${header()}<main>${state.notice?`<div class="notice ${state.notice.startsWith('Saved')?'success':''}">${esc(state.notice)}</div>`:''}${views[state.view]()}</main>${nav()}</div>`;
 }
 function render(extra=''){
@@ -1517,8 +1591,8 @@ function bind(){
   document.querySelectorAll('[data-view]').forEach(b=>b.onclick=async()=>{
     const next=b.dataset.view;
     state.view=next;state.notice='';
-    if(next==='reports' && state.mode==='supabase'){
-      document.getElementById('app').innerHTML='<div class="empty">Refreshing live KUDOS reports…</div>';
+    if((next==='reports'||next==='safetylog') && state.mode==='supabase'){
+      document.getElementById('app').innerHTML='<div class="empty">Refreshing live KUDOS data…</div>';
       await refresh();
     }else render();
   });
@@ -1540,7 +1614,11 @@ function bind(){
   document.querySelector('[data-action="newChallenge"]')?.addEventListener('click',()=>showModal(challengeModal()));
   document.querySelectorAll('[data-log]').forEach(b=>b.onclick=()=>{state.view='log';state.challengeFilter=b.dataset.log;render()});
   document.querySelectorAll('[data-detail]').forEach(b=>b.onclick=()=>{state.view='progress';state.challengeFilter=b.dataset.detail;render()});
-  document.querySelectorAll('[data-special]').forEach(b=>b.onclick=()=>showModal(specialModal(b.dataset.special)));
+  document.querySelectorAll('[data-special]').forEach(b=>b.onclick=()=>{
+    if(!currentProfile()){showModal(profileModal(true));return;}
+    showModal(specialModal(b.dataset.special));
+  });
+  document.getElementById('refreshSafetyLog')?.addEventListener('click',()=>{void refresh();});
   document.querySelectorAll('[data-delete-entry]').forEach(b=>b.onclick=async()=>{try{await deleteAdminEntry(b.dataset.entryType,b.dataset.deleteEntry)}catch(err){state.notice=`Could not remove entry: ${err.message||err}`;render()}});
   document.getElementById('teamFilter')?.addEventListener('change',e=>{state.teamFilter=e.target.value;render()});
   document.querySelectorAll('[data-mode]').forEach(b=>b.onclick=()=>{state.progressMode=b.dataset.mode;render()});
@@ -1619,12 +1697,12 @@ function bind(){
 }
 
 window.addEventListener('focus',()=>{
-  if(state.view==='reports' && state.mode==='supabase' &&
+  if((state.view==='reports'||state.view==='safetylog') && state.mode==='supabase' &&
       Date.now()-Number(state.lastDataRefreshAt||0)>60000)void refresh();
 });
 // Revalidate an open Reports tab every minute, without disrupting other views.
 window.setInterval(()=>{
-  if(state.view==='reports' && state.mode==='supabase' && !document.hidden &&
+  if((state.view==='reports'||state.view==='safetylog') && state.mode==='supabase' && !document.hidden &&
       Date.now()-Number(state.lastDataRefreshAt||0)>60000)void refresh();
 },30000);
 if('serviceWorker' in navigator) navigator.serviceWorker.register('./service-worker.js?v=static-only-v20-20261106', {updateViaCache:'none'}).catch(()=>{});

@@ -457,3 +457,37 @@ main{max-width:1120px;margin:0 auto;padding:18px 16px 40px}
   .kudos-reminder-actions{justify-content:stretch}
   .kudos-reminder-actions .btn{flex:1}
 }
+
+
+/* Safety Log — publication controlled by Safety Manager Actioning status. */
+.safety-log-intro{display:flex;flex-direction:column;gap:10px;border-top:4px solid var(--green)}
+.safety-log-intro strong{font-size:16px;color:var(--navy)}
+.safety-log-intro .challenge-desc{margin:6px 0 0;line-height:1.6}
+.safety-log-stats{display:flex;flex-wrap:wrap;gap:10px;margin:16px 0}
+.safety-log-stats span{background:var(--soft);color:var(--green2);padding:9px 14px;border-radius:12px;font-size:13px}
+.safety-log-stats strong{font-size:18px;color:var(--navy);margin-right:4px}
+.safety-log-list{display:grid;grid-template-columns:minmax(0,1fr);gap:15px}
+.safety-log-entry{border-left:4px solid var(--green);overflow-wrap:anywhere}
+.safety-log-head{align-items:flex-start;flex-wrap:wrap}
+.safety-log-head h3{margin:5px 0 0;color:var(--navy);font-size:20px}
+.safety-log-status.actioning{background:#f7ead0;color:#6d501b}
+.safety-log-status.resolved{background:#e3f1e3;color:#285e2e}
+.safety-log-status.closed{background:#e6eae8;color:#42534b}
+.safety-log-meta{display:flex;flex-wrap:wrap;gap:8px 18px;margin:12px 0 17px;font-size:12px;color:var(--muted)}
+.safety-log-meta strong{color:var(--navy);margin-right:5px}
+.safety-log-section{padding:12px 0;border-top:1px solid var(--line)}
+.safety-log-section>strong{color:var(--navy);font-size:13px}
+.safety-log-narrative{margin:8px 0 5px;white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px;line-height:1.65;color:var(--ink)}
+.safety-log-manager{background:#f7faf7;padding:14px;margin:5px -6px 12px;border:1px solid #d9e5db;border-radius:12px}
+.safety-log-manager .help{margin-top:8px}
+
+/* Eight public tabs, nine with the workspace-admin weekly shortcut. */
+.bottom-nav{grid-template-columns:repeat(8,minmax(0,1fr));width:min(860px,calc(100% - 20px))}
+.bottom-nav.with-weekly{grid-template-columns:repeat(9,minmax(0,1fr));width:min(960px,calc(100% - 20px))}
+@media(max-width:520px){
+  .bottom-nav,.bottom-nav.with-weekly{width:calc(100% - 12px);gap:0;padding:6px 3px}
+  .bottom-nav .nav-btn{padding:7px 1px;font-size:8px;line-height:1.15;overflow-wrap:anywhere}
+  .bottom-nav .nav-btn b{font-size:16px;margin-bottom:3px}
+  .safety-log-stats{gap:6px}
+  .safety-log-stats span{font-size:11px;padding:7px 9px}
+}
